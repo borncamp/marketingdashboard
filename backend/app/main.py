@@ -19,9 +19,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Public routes (no auth required)
+app.include_router(sync_router)
+
+# Protected routes (HTTP Basic Auth required)
 app.include_router(campaigns_router)
 app.include_router(settings_router)
-app.include_router(sync_router)
 
 
 @app.get("/")

@@ -145,19 +145,21 @@ class CampaignDatabase:
 
     @staticmethod
     def get_latest_metrics(campaign_id: str) -> List[dict]:
-        """Get the most recent value for each metric for a campaign."""
+        """Get aggregated metrics for the last 7 days for a campaign."""
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT
                     metric_name as name,
-                    value,
-                    unit,
-                    date,
-                    MAX(date) as latest_date
+                    CASE
+                        WHEN metric_name = 'ctr' THEN AVG(value)
+                        ELSE SUM(value)
+                    END as value,
+                    unit
                 FROM campaign_metrics
                 WHERE campaign_id = ?
-                GROUP BY metric_name
+                    AND date >= date('now', '-7 days')
+                GROUP BY metric_name, unit
                 ORDER BY metric_name
             """, (campaign_id,))
 

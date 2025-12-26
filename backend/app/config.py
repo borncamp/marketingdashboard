@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # Security - Optional API key for sync endpoint
     sync_api_key: Optional[str] = None
 
+    # Authentication - HTTP Basic Auth
+    auth_username: str = "admin"
+    auth_password: str = "admin"  # CHANGE THIS in production!
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
@@ -38,4 +42,9 @@ class Settings(BaseSettings):
 
 
 # Global settings instance
-settings = Settings()
+def get_settings() -> Settings:
+    """Get settings instance."""
+    return Settings()
+
+
+settings = get_settings()

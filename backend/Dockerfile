@@ -2,6 +2,12 @@
 
 FROM python:3.11-slim as builder
 
+# Install build dependencies for bcrypt
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install Poetry
 RUN pip install poetry==1.7.1
 
@@ -19,6 +25,11 @@ RUN poetry install --no-interaction --no-ansi --no-root --only main
 
 # Final stage
 FROM python:3.11-slim
+
+# Install runtime dependencies for bcrypt
+RUN apt-get update && apt-get install -y \
+    libffi8 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app

@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import CampaignList from './components/CampaignList';
 import Onboarding from './components/Onboarding';
 import SetupInstructions from './components/SetupInstructions';
+import Settings from './components/Settings';
 
 function App() {
   const [hasData, setHasData] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState('dashboard');
 
   useEffect(() => {
     checkDataStatus();
@@ -35,8 +37,11 @@ function App() {
     );
   }
 
-  // If we have data, show the dashboard regardless of configuration
-  // (data could come from scripts OR direct API)
+  // Show settings page if requested
+  if (currentPage === 'settings') {
+    return <Settings onBack={() => setCurrentPage('dashboard')} />;
+  }
+
   if (hasData === true) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -60,6 +65,13 @@ function App() {
                 >
                   🔄 Refresh
                 </button>
+                <button
+                  onClick={() => setCurrentPage('settings')}
+                  className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold hover:bg-gray-200 transition-colors"
+                  title="Settings"
+                >
+                  ⚙️ Settings
+                </button>
               </div>
             </div>
           </div>
@@ -72,7 +84,7 @@ function App() {
         <footer className="bg-white border-t mt-12">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <p className="text-center text-gray-500 text-sm">
-              Marketing Campaign Tracker - Real-time campaign monitoring for Google Ads, Meta Ads, and Reddit Ads
+              Marketing Campaign Tracker - Real-time campaign monitoring
             </p>
           </div>
         </footer>
@@ -80,12 +92,10 @@ function App() {
     );
   }
 
-  // No data yet - show setup instructions
   if (hasData === false) {
     return <SetupInstructions onComplete={() => setHasData(true)} />;
   }
 
-  // Fallback: show onboarding for direct API setup
   return <Onboarding onComplete={() => window.location.reload()} />;
 }
 

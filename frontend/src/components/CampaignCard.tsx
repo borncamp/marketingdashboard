@@ -78,15 +78,15 @@ export default function CampaignCard({ campaign }: CampaignCardProps) {
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="text-center p-3 bg-blue-50 rounded">
-          <p className="text-xs text-gray-600 mb-1">Spend</p>
+          <p className="text-xs text-gray-600 mb-1">Spend (7d)</p>
           <p className="text-lg font-bold text-blue-600">{getMetricValue('spend')}</p>
         </div>
         <div className="text-center p-3 bg-green-50 rounded">
-          <p className="text-xs text-gray-600 mb-1">CTR</p>
+          <p className="text-xs text-gray-600 mb-1">CTR (7d avg)</p>
           <p className="text-lg font-bold text-green-600">{getMetricValue('ctr')}</p>
         </div>
         <div className="text-center p-3 bg-yellow-50 rounded">
-          <p className="text-xs text-gray-600 mb-1">Conversions</p>
+          <p className="text-xs text-gray-600 mb-1">Conversions (7d)</p>
           <p className="text-lg font-bold text-yellow-600">{getMetricValue('conversions')}</p>
         </div>
       </div>

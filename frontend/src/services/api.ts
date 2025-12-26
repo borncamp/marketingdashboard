@@ -8,6 +8,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,  // Enable HTTP Basic Auth
 });
 
 export const campaignApi = {
@@ -25,6 +26,14 @@ export const campaignApi = {
       `/api/campaigns/${campaignId}/metrics/${metricName}`,
       { params: { days } }
     );
+    return response.data;
+  },
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.post('/api/settings/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
     return response.data;
   },
 };

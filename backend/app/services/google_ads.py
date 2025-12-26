@@ -81,25 +81,32 @@ class GoogleAdsAdapter(AdPlatformAdapter):
         """
         ga_service = self.client.get_service("GoogleAdsService")
 
-        query = """
+        # Calculate date range for last 7 days
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=6)  # 6 days ago + today = 7 days
+
+        query = f"""
             SELECT
                 campaign.id,
                 campaign.name,
                 campaign.status,
+                segments.date,
                 metrics.cost_micros,
                 metrics.clicks,
                 metrics.impressions,
                 metrics.conversions
             FROM campaign
             WHERE campaign.status != 'REMOVED'
-            AND segments.date DURING LAST_7_DAYS
+            AND segments.date BETWEEN '{start_date}' AND '{end_date}'
         """
 
         try:
             response = ga_service.search(customer_id=self.customer_id, query=query)
 
             campaigns_dict = {}
+            row_count = 0
             for row in response:
+                row_count += 1
                 campaign_id = str(row.campaign.id)
 
                 if campaign_id not in campaigns_dict:
@@ -117,6 +124,8 @@ class GoogleAdsAdapter(AdPlatformAdapter):
                 campaigns_dict[campaign_id]["clicks"] += row.metrics.clicks
                 campaigns_dict[campaign_id]["impressions"] += row.metrics.impressions
                 campaigns_dict[campaign_id]["conversions"] += row.metrics.conversions
+
+            print(f"DEBUG: Processed {row_count} rows for {len(campaigns_dict)} campaigns")
 
             campaigns = []
             for campaign_data in campaigns_dict.values():

@@ -1,9 +1,17 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import HTTPBasicCredentials
+from pydantic import BaseModel
 from app.models.settings import SettingsResponse, SettingsUpdateRequest, GoogleAdsSettings
 from app.services.settings_manager import settings_manager
 from app.services.google_ads import GoogleAdsAdapter
+from app.auth import verify_credentials, security
 
-router = APIRouter(prefix="/api/settings", tags=["settings"])
+router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(verify_credentials)])
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
 @router.get("", response_model=SettingsResponse)
@@ -302,4 +310,63 @@ async def exchange_authorization_code(request: dict):
         raise HTTPException(
             status_code=400,
             detail=f"Failed to exchange code: {str(e)}"
+        )
+
+
+@router.post("/change-password")
+async def change_password(
+    request: PasswordChangeRequest,
+    credentials: HTTPBasicCredentials = Depends(security)
+):
+    """
+    Change the user's password in the database.
+
+    Args:
+        request: Password change request with current and new password
+        credentials: Current HTTP Basic Auth credentials
+
+    Returns:
+        Success message
+    """
+    from app import db
+
+    # Verify current password matches
+    if not db.verify_password(credentials.username, request.current_password):
+        raise HTTPException(
+            status_code=400,
+            detail="Current password is incorrect"
+        )
+
+    # Validate new password
+    if len(request.new_password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="New password must be at least 8 characters long"
+        )
+
+    if request.new_password == request.current_password:
+        raise HTTPException(
+            status_code=400,
+            detail="New password must be different from current password"
+        )
+
+    # Update password in database
+    try:
+        if not db.change_password(credentials.username, request.new_password):
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update password in database"
+            )
+
+        return {
+            "success": True,
+            "message": "Password changed successfully. Please log in again with your new password."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update password: {str(e)}"
         )

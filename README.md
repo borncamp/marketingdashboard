@@ -113,15 +113,27 @@ Before running the application, you need to set up Google Ads API credentials:
    # Edit .env and fill in your Google Ads API credentials
    ```
 
-3. **Build and run with Docker Compose**
+3. **Set authentication credentials**
+   ```bash
+   # Use the interactive password setter (recommended)
+   ./set-password.sh
+
+   # Or set them directly in .env
+   # AUTH_USERNAME=your_username
+   # AUTH_PASSWORD=your_secure_password
+   ```
+
+4. **Build and run with Docker Compose**
    ```bash
    docker-compose up --build
    ```
 
-4. **Access the application**
+5. **Access the application**
    - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
    - API Documentation: http://localhost:8000/docs
+
+   The application uses HTTP Basic Authentication. Your browser will prompt for the username and password you set in step 3.
 
 ### Local Development
 
@@ -239,14 +251,32 @@ Platform-agnostic data models ensure consistent API responses:
    # Edit .env with your credentials
    ```
 
-3. **Deploy**
+3. **Set authentication credentials**
+   ```bash
+   # Option 1: Set password remotely from your local machine
+   ./set-remote-password.sh
+
+   # Option 2: Set password directly on the server
+   ssh your-server
+   cd /opt/marketing-tracker
+   ./set-password.sh
+   ```
+
+4. **Deploy**
    ```bash
    docker-compose up -d
    ```
 
-4. **Set up reverse proxy (optional)**
+5. **Set up reverse proxy (optional)**
    - Use nginx or Caddy to proxy to port 3000
    - Configure SSL with Let's Encrypt
+
+### Security Best Practices
+
+- **Never commit credentials**: The `.env` file is automatically ignored by git
+- **Change default password**: Use `./set-password.sh` to set a strong password (8+ characters recommended)
+- **Rotate passwords regularly**: Use `./set-remote-password.sh` to update production passwords without SSH access
+- **Use HTTPS**: Always use SSL/TLS in production (configured via reverse proxy)
 
 ## Future Enhancements
 

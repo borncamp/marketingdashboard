@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List
 from app.models.campaign import Campaign, TimeSeriesData, Metric, DataPoint, CampaignStatus
 from app.database import CampaignDatabase
+from app.auth import verify_credentials
 
-router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
+router = APIRouter(prefix="/api/campaigns", tags=["campaigns"], dependencies=[Depends(verify_credentials)])
 
 
 @router.get("")
