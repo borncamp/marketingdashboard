@@ -1,0 +1,190 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                   🎉 AUTOMATED ONBOARDING ADDED! 🎉                        ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+✨ NO MORE MANUAL .ENV EDITING! ✨
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📱 WHAT'S NEW:
+
+Instead of manually editing .env files with credentials, you now get:
+
+✅ Interactive Setup Wizard
+   - Beautiful step-by-step UI
+   - Guides you through each requirement
+   - Visual feedback and validation
+
+✅ Automated OAuth Flow
+   - Generates authorization URLs
+   - Exchanges codes for tokens
+   - No manual token generation needed
+
+✅ Credential Validation
+   - Tests your credentials before saving
+   - Shows your Google Ads account name
+   - Clear error messages if something's wrong
+
+✅ Encrypted Storage
+   - Credentials stored encrypted on server
+   - Uses Fernet symmetric encryption
+   - Never stored in plain text
+
+✅ Settings Management
+   - Update credentials anytime via UI
+   - No SSH or file editing required
+   - Click ⚙️ Settings button to reconfigure
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 NEW DEPLOYMENT WORKFLOW:
+
+OLD WAY (Still works):
+  1. cp .env.example .env
+  2. vim .env  # Manually edit 5+ credentials
+  3. ./deploy-simple.sh
+  4. Hope you got everything right
+
+NEW WAY (Recommended):
+  1. ./deploy-simple.sh
+  2. Open http://marketing.brianborncamp.com:3000
+  3. Follow the wizard - it guides you through everything!
+  4. Done! 🎉
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 ONBOARDING FLOW STEPS:
+
+Step 1: Welcome Screen
+  → Introduction and requirements checklist
+
+Step 2: Enter Credentials  
+  → Developer Token
+  → OAuth Client ID & Secret
+  → Customer ID
+
+Step 3: Google Authorization
+  → Click to open Google OAuth page
+  → Sign in and grant permissions
+  → Copy authorization code back
+
+Step 4: Auto-Exchange & Validate
+  → App exchanges code for refresh token
+  → Validates credentials with Google Ads API
+  → Shows account name for confirmation
+
+Step 5: Save & Go!
+  → Encrypts and saves all credentials
+  → Redirects to dashboard
+  → Start monitoring campaigns!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔐 SECURITY FEATURES:
+
+✅ Encrypted at Rest
+   - Fernet symmetric encryption
+   - Custom encryption key support
+   - Settings file: /tmp/marketing-settings.enc
+
+✅ Never in Git
+   - Credentials only in encrypted file
+   - Not in .env (though .env still supported)
+   - Automatic .gitignore protection
+
+✅ API-Based Configuration
+   - RESTful endpoints for settings
+   - Validation before save
+   - Secure transmission over HTTPS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🆕 NEW API ENDPOINTS:
+
+GET    /api/settings              → Check configuration status
+POST   /api/settings              → Save credentials (encrypted)
+POST   /api/settings/validate     → Test credentials
+GET    /api/settings/oauth-url    → Generate OAuth URL
+POST   /api/settings/exchange-code → Exchange code for token
+DELETE /api/settings              → Clear saved settings
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📦 NEW FILES ADDED:
+
+Backend:
+  ✅ backend/app/models/settings.py         - Settings data models
+  ✅ backend/app/services/settings_manager.py - Encrypted storage
+  ✅ backend/app/routers/settings.py        - Settings API endpoints
+
+Frontend:
+  ✅ frontend/src/components/Onboarding.tsx - Setup wizard UI
+  ✅ Updated App.tsx                        - Auto-detect configuration
+
+Documentation:
+  ✅ ONBOARDING.md                          - Complete onboarding guide
+
+Dependencies:
+  ✅ cryptography (Python)                  - For encryption
+  ✅ requests (Python)                      - For OAuth exchange
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 USAGE EXAMPLES:
+
+Deploy without any credentials:
+  $ ./deploy-simple.sh
+  $ # No .env needed!
+  $ # Open browser and follow wizard
+
+Update settings later:
+  $ # Click ⚙️ Settings in the app
+  $ # Or use API: curl -X DELETE http://localhost:8000/api/settings
+
+Use custom encryption key:
+  $ export SETTINGS_ENCRYPTION_KEY="your-key-here"
+  $ ./deploy-simple.sh
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 DOCUMENTATION:
+
+Read ONBOARDING.md for:
+  - Detailed step-by-step guide
+  - Troubleshooting tips
+  - Security best practices
+  - Advanced configuration
+  - Getting Google Ads credentials
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 BENEFITS:
+
+For You:
+  ✅ No command-line credential entry
+  ✅ Visual, user-friendly interface
+  ✅ Instant validation and feedback
+  ✅ Can reconfigure anytime
+
+For Deployment:
+  ✅ Deploy first, configure later
+  ✅ No .env file needed initially
+  ✅ Easy updates without redeployment
+
+For Security:
+  ✅ Encrypted credential storage
+  ✅ API-based configuration
+  ✅ Easy credential rotation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 GET STARTED NOW:
+
+  1. Deploy: ./deploy-simple.sh
+  2. Open: http://marketing.brianborncamp.com:3000
+  3. Follow the wizard
+  4. Monitor your campaigns!
+
+That's it! No more .env editing! 🎊
+
+╚════════════════════════════════════════════════════════════════════════════╝

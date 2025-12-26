@@ -1,0 +1,62 @@
+=================================================================
+CREATING PDF FOR GOOGLE ADS API APPLICATION
+=================================================================
+
+You need to submit a PDF design document when applying for Basic Access.
+The markdown file is ready: Google_Ads_API_Design_Documentation.md
+
+THREE EASY WAYS TO CONVERT TO PDF:
+
+-------------------------------------------------------------------
+METHOD 1: Online Converter (Easiest - 30 seconds)
+-------------------------------------------------------------------
+1. Go to: https://md2pdf.netlify.app/
+2. Click "Choose File" 
+3. Select: Google_Ads_API_Design_Documentation.md
+4. Click "Convert"
+5. Download the PDF
+
+Alternative online tools:
+- https://www.markdowntopdf.com/
+- https://dillinger.io/ (File → Export As → PDF)
+
+-------------------------------------------------------------------
+METHOD 2: Google Docs (1 minute)
+-------------------------------------------------------------------
+1. Open Google Docs: https://docs.google.com
+2. File → Open → Upload
+3. Select: Google_Ads_API_Design_Documentation.md
+4. Wait for it to open (formatting may be basic)
+5. File → Download → PDF Document (.pdf)
+
+-------------------------------------------------------------------
+METHOD 3: Microsoft Word (1 minute)
+-------------------------------------------------------------------
+1. Open Microsoft Word
+2. File → Open
+3. Select: Google_Ads_API_Design_Documentation.md
+4. File → Save As
+5. Choose format: PDF
+6. Click Save
+
+-------------------------------------------------------------------
+THEN SUBMIT YOUR APPLICATION:
+-------------------------------------------------------------------
+1. Go to: https://ads.google.com/aw/apicenter
+2. Click "Apply for Basic Access"
+3. Fill out the form
+4. Upload the PDF you just created
+5. Submit
+
+Approval typically takes 24-48 hours.
+
+-------------------------------------------------------------------
+WHILE YOU WAIT:
+-------------------------------------------------------------------
+Use Google Ads Scripts for immediate access!
+
+See: GOOGLE_ADS_SCRIPT_SETUP.md for 5-minute setup.
+
+This lets you use your dashboard TODAY while waiting for API approval.
+
+=================================================================
