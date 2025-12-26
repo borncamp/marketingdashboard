@@ -3,6 +3,7 @@ import CampaignList from './components/CampaignList';
 import Onboarding from './components/Onboarding';
 import SetupInstructions from './components/SetupInstructions';
 import Settings from './components/Settings';
+import ShopifySettings from './components/ShopifySettings';
 
 function App() {
   const [hasData, setHasData] = useState<boolean | null>(null);
@@ -42,6 +43,11 @@ function App() {
     return <Settings onBack={() => setCurrentPage('dashboard')} />;
   }
 
+  // Show Shopify settings page if requested
+  if (currentPage === 'shopify') {
+    return <ShopifySettings onBack={() => setCurrentPage('dashboard')} />;
+  }
+
   if (hasData === true) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -64,6 +70,13 @@ function App() {
                   title="Refresh data"
                 >
                   🔄 Refresh
+                </button>
+                <button
+                  onClick={() => setCurrentPage('shopify')}
+                  className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold hover:bg-green-200 transition-colors"
+                  title="Shopify Integration"
+                >
+                  🛍️ Shopify
                 </button>
                 <button
                   onClick={() => setCurrentPage('settings')}

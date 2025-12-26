@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Campaign } from '../types/campaign';
-import ROASCalculator from './ROASCalculator';
 
 interface MetricsSummaryProps {
   campaigns: Campaign[];
@@ -11,6 +10,7 @@ type TimePeriod = 7 | 30 | 90;
 export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
   const [period, setPeriod] = useState<TimePeriod>(7);
   const [totals, setTotals] = useState({ spend: 0, clicks: 0, impressions: 0, conversions: 0 });
+  const [shopifyMetrics, setShopifyMetrics] = useState({ revenue: 0, shipping_revenue: 0, shipping_cost: 0, orders: 0 });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -22,12 +22,13 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
 
     setLoading(true);
     try {
-      // Fetch time series for all metrics
-      const [spendData, clicksData, impressionsData, conversionsData] = await Promise.all([
+      // Fetch campaign time series for all metrics
+      const [spendData, clicksData, impressionsData, conversionsData, shopifyData] = await Promise.all([
         fetch(`/api/campaigns/all/metrics/spend?days=${period}`).then(r => r.json()),
         fetch(`/api/campaigns/all/metrics/clicks?days=${period}`).then(r => r.json()),
         fetch(`/api/campaigns/all/metrics/impressions?days=${period}`).then(r => r.json()),
         fetch(`/api/campaigns/all/metrics/conversions?days=${period}`).then(r => r.json()),
+        fetch(`/api/shopify/metrics?days=${period}`).then(r => r.json()).catch(() => ({ total_revenue: 0, total_shipping_cost: 0, total_orders: 0 })),
       ]);
 
       // Sum up all data points across all campaigns
@@ -43,6 +44,12 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
         impressions: calculateTotal(impressionsData),
         conversions: calculateTotal(conversionsData),
       });
+
+      setShopifyMetrics({
+        revenue: shopifyData.total_revenue || 0,
+        shipping_cost: shopifyData.total_shipping_cost || 0,
+        orders: shopifyData.total_orders || 0,
+      });
     } catch (error) {
       console.error('Failed to load metrics summary:', error);
     } finally {
@@ -50,12 +57,13 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
     }
   };
 
-  // Calculate overall CTR
-  const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+  // Calculate overall ROAS
+  const totalCost = totals.spend + shopifyMetrics.shipping_cost;
+  const actualROAS = totalCost > 0 ? shopifyMetrics.revenue / totalCost : 0;
 
   const metrics = [
     {
-      name: 'Total Spend',
+      name: 'Ad Spend',
       value: `$${totals.spend.toFixed(2)}`,
       icon: '💰',
       color: 'blue',
@@ -64,40 +72,40 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
       borderColor: 'border-blue-200'
     },
     {
-      name: 'Total Clicks',
-      value: totals.clicks.toLocaleString(),
-      icon: '🖱️',
+      name: 'Revenue',
+      value: `$${shopifyMetrics.revenue.toFixed(2)}`,
+      icon: '💵',
       color: 'green',
       bgColor: 'bg-green-50',
       textColor: 'text-green-600',
       borderColor: 'border-green-200'
     },
     {
-      name: 'Total Impressions',
-      value: totals.impressions.toLocaleString(),
-      icon: '👁️',
+      name: 'Shipping Cost',
+      value: `$${shopifyMetrics.shipping_cost.toFixed(2)}`,
+      icon: '📦',
+      color: 'orange',
+      bgColor: 'bg-orange-50',
+      textColor: 'text-orange-600',
+      borderColor: 'border-orange-200'
+    },
+    {
+      name: 'ROAS',
+      value: actualROAS > 0 ? `${actualROAS.toFixed(2)}x` : 'N/A',
+      icon: '📈',
+      color: actualROAS >= 2 ? 'emerald' : actualROAS >= 1 ? 'amber' : 'red',
+      bgColor: actualROAS >= 2 ? 'bg-emerald-50' : actualROAS >= 1 ? 'bg-amber-50' : 'bg-red-50',
+      textColor: actualROAS >= 2 ? 'text-emerald-600' : actualROAS >= 1 ? 'text-amber-600' : 'text-red-600',
+      borderColor: actualROAS >= 2 ? 'border-emerald-200' : actualROAS >= 1 ? 'border-amber-200' : 'border-red-200'
+    },
+    {
+      name: 'Orders',
+      value: shopifyMetrics.orders.toLocaleString(),
+      icon: '🛒',
       color: 'purple',
       bgColor: 'bg-purple-50',
       textColor: 'text-purple-600',
       borderColor: 'border-purple-200'
-    },
-    {
-      name: 'Average CTR',
-      value: `${ctr.toFixed(2)}%`,
-      icon: '📊',
-      color: 'amber',
-      bgColor: 'bg-amber-50',
-      textColor: 'text-amber-600',
-      borderColor: 'border-amber-200'
-    },
-    {
-      name: 'Total Conversions',
-      value: totals.conversions.toFixed(0),
-      icon: '✅',
-      color: 'emerald',
-      bgColor: 'bg-emerald-50',
-      textColor: 'text-emerald-600',
-      borderColor: 'border-emerald-200'
     }
   ];
 
@@ -126,7 +134,7 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
       </div>
 
       {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {metrics.map((metric) => (
           <div
             key={metric.name}
@@ -146,11 +154,6 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
             </div>
           </div>
         ))}
-      </div>
-
-      {/* ROAS Calculator - Inline */}
-      <div className="mb-8 flex justify-end">
-        <ROASCalculator totalSpend={totals.spend} />
       </div>
     </div>
   );

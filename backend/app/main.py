@@ -4,6 +4,8 @@ from app.config import settings
 from app.routers import campaigns_router
 from app.routers.settings import router as settings_router
 from app.routers.sync import router as sync_router
+from app.routers.shopify import router as shopify_router
+from app.routers.shopify_proxy import router as shopify_proxy_router
 
 app = FastAPI(
     title="Marketing Campaign Tracker API",
@@ -21,6 +23,8 @@ app.add_middleware(
 
 # Public routes (no auth required)
 app.include_router(sync_router)
+app.include_router(shopify_router)
+app.include_router(shopify_proxy_router)
 
 # Protected routes (HTTP Basic Auth required)
 app.include_router(campaigns_router)

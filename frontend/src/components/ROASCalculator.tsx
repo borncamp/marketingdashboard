@@ -1,11 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface ROASCalculatorProps {
   totalSpend: number;
 }
 
+const REVENUE_STORAGE_KEY = 'marketing_tracker_revenue';
+
 export default function ROASCalculator({ totalSpend }: ROASCalculatorProps) {
   const [revenue, setRevenue] = useState<string>('');
+
+  // Load revenue from localStorage on mount
+  useEffect(() => {
+    const savedRevenue = localStorage.getItem(REVENUE_STORAGE_KEY);
+    if (savedRevenue) {
+      setRevenue(savedRevenue);
+    }
+  }, []);
 
   const revenueNum = parseFloat(revenue) || 0;
   const roas = totalSpend > 0 ? revenueNum / totalSpend : 0;
@@ -15,6 +25,12 @@ export default function ROASCalculator({ totalSpend }: ROASCalculatorProps) {
     // Allow only numbers and decimal point
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
       setRevenue(value);
+      // Save to localStorage
+      if (value) {
+        localStorage.setItem(REVENUE_STORAGE_KEY, value);
+      } else {
+        localStorage.removeItem(REVENUE_STORAGE_KEY);
+      }
     }
   };
 

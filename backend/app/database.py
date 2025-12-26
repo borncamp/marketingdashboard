@@ -83,6 +83,26 @@ def init_database():
             )
         """)
 
+        # Shopify daily metrics table (aggregated revenue and costs by date)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shopify_daily_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE NOT NULL UNIQUE,
+                revenue REAL DEFAULT 0,
+                shipping_revenue REAL DEFAULT 0,
+                shipping_cost REAL DEFAULT 0,
+                order_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Create index for date lookups
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shopify_daily_metrics_date
+            ON shopify_daily_metrics(date DESC)
+        """)
+
         conn.commit()
 
 
@@ -347,6 +367,118 @@ class CampaignDatabase:
             # Log failed sync
             CampaignDatabase.log_sync(campaigns_count, metrics_count, "error", str(e))
             raise
+
+
+class ShopifyDatabase:
+    """Database operations for Shopify revenue data."""
+
+    @staticmethod
+    def upsert_daily_metrics(date_value: str, revenue: float, shipping_revenue: float,
+                            shipping_cost: float, order_count: int):
+        """Insert or update Shopify metrics for a specific date."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO shopify_daily_metrics
+                (date, revenue, shipping_revenue, shipping_cost, order_count, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(date) DO UPDATE SET
+                    revenue = excluded.revenue,
+                    shipping_revenue = excluded.shipping_revenue,
+                    shipping_cost = excluded.shipping_cost,
+                    order_count = excluded.order_count,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (date_value, revenue, shipping_revenue, shipping_cost, order_count))
+
+    @staticmethod
+    def get_metrics_summary(days: int = 7) -> dict:
+        """Get aggregated Shopify metrics for the last N days."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    SUM(revenue) as total_revenue,
+                    SUM(shipping_revenue) as total_shipping_revenue,
+                    SUM(shipping_cost) as total_shipping_cost,
+                    SUM(order_count) as total_orders
+                FROM shopify_daily_metrics
+                WHERE date >= date('now', ?)
+            """, (f'-{days} days',))
+
+            row = cursor.fetchone()
+            if not row:
+                return {
+                    "total_revenue": 0,
+                    "total_shipping_revenue": 0,
+                    "total_shipping_cost": 0,
+                    "total_orders": 0
+                }
+
+            return dict(row)
+
+    @staticmethod
+    def get_time_series(metric_name: str, days: int = 30) -> List[dict]:
+        """Get time series data for a specific Shopify metric."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Map metric name to column
+            metric_column_map = {
+                'revenue': 'revenue',
+                'shipping_revenue': 'shipping_revenue',
+                'shipping_cost': 'shipping_cost',
+                'orders': 'order_count'
+            }
+
+            column = metric_column_map.get(metric_name, 'revenue')
+
+            cursor.execute(f"""
+                SELECT
+                    date,
+                    {column} as value
+                FROM shopify_daily_metrics
+                WHERE date >= date('now', ?)
+                ORDER BY date ASC
+            """, (f'-{days} days',))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+    @staticmethod
+    def bulk_upsert_from_orders(orders_data: List[dict]):
+        """
+        Bulk upsert Shopify order data.
+
+        Expected format:
+        [
+            {
+                "date": "2025-12-25",
+                "revenue": 150.00,
+                "shipping_revenue": 10.00,
+                "shipping_cost": 5.50,
+                "order_count": 3
+            }
+        ]
+        """
+        records_count = 0
+
+        try:
+            for day_data in orders_data:
+                ShopifyDatabase.upsert_daily_metrics(
+                    date_value=day_data['date'],
+                    revenue=float(day_data.get('revenue', 0)),
+                    shipping_revenue=float(day_data.get('shipping_revenue', 0)),
+                    shipping_cost=float(day_data.get('shipping_cost', 0)),
+                    order_count=int(day_data.get('order_count', 0))
+                )
+                records_count += 1
+
+            return {
+                "success": True,
+                "records_processed": records_count
+            }
+
+        except Exception as e:
+            raise Exception(f"Failed to bulk upsert Shopify data: {str(e)}")
 
 
 # Initialize database on module import
