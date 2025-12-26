@@ -200,6 +200,46 @@ class CampaignDatabase:
             }
 
     @staticmethod
+    def get_all_campaigns_time_series(metric_name: str, days: int = 30) -> List[dict]:
+        """Get time series data for all campaigns for a specific metric."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Get all campaigns
+            cursor.execute("SELECT id, name, status FROM campaigns WHERE status = 'ENABLED' ORDER BY name")
+            campaigns = cursor.fetchall()
+
+            result = []
+            for campaign in campaigns:
+                campaign_id = campaign['id']
+                campaign_name = campaign['name']
+
+                # Get metric data points for this campaign
+                cursor.execute("""
+                    SELECT
+                        date,
+                        value,
+                        unit
+                    FROM campaign_metrics
+                    WHERE campaign_id = ? AND metric_name = ?
+                        AND date >= date('now', ?)
+                    ORDER BY date ASC
+                """, (campaign_id, metric_name, f'-{days} days'))
+
+                data_points = [dict(row) for row in cursor.fetchall()]
+
+                if data_points:  # Only include campaigns with data
+                    result.append({
+                        "campaign_id": campaign_id,
+                        "campaign_name": campaign_name,
+                        "metric_name": metric_name,
+                        "unit": data_points[0]['unit'] if data_points else "",
+                        "data_points": data_points
+                    })
+
+            return result
+
+    @staticmethod
     def get_all_metrics_time_series(campaign_id: str, days: int = 30) -> dict:
         """Get time series data for all metrics of a campaign."""
         with get_db_connection() as conn:

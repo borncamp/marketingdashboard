@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react';
 import { Campaign } from '../types/campaign';
 import { campaignApi } from '../services/api';
 import CampaignCard from './CampaignCard';
+import AllCampaignsChart from './AllCampaignsChart';
+import MetricsSummary from './MetricsSummary';
 
 export default function CampaignList() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMetric, setSelectedMetric] = useState<string>('spend');
 
   useEffect(() => {
     loadCampaigns();
@@ -105,6 +108,33 @@ export default function CampaignList() {
         </button>
       </div>
 
+      {/* Metrics Summary */}
+      <MetricsSummary campaigns={campaigns} />
+
+      {/* Combo Chart for All Campaigns */}
+      <div className="mb-8">
+        <div className="mb-4 flex space-x-2">
+          {['spend', 'clicks', 'impressions', 'ctr', 'conversions'].map((metric) => (
+            <button
+              key={metric}
+              onClick={() => setSelectedMetric(metric)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                selectedMetric === metric
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50 shadow-sm'
+              }`}
+            >
+              {metric.charAt(0).toUpperCase() + metric.slice(1)}
+            </button>
+          ))}
+        </div>
+        <AllCampaignsChart metricName={selectedMetric} days={30} />
+      </div>
+
+      {/* Individual Campaign Cards */}
+      <div className="mb-4">
+        <h3 className="text-2xl font-bold text-gray-900 mb-4">Individual Campaigns</h3>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {campaigns.map((campaign) => (
           <CampaignCard key={campaign.id} campaign={campaign} />

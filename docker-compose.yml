@@ -20,6 +20,7 @@ services:
       - API_CORS_ORIGINS=http://localhost:3000,http://localhost
     volumes:
       - ./backend/app:/app/app
+      - campaign-data:/app/data
     restart: unless-stopped
     networks:
       - marketing-network
@@ -40,3 +41,6 @@ services:
 networks:
   marketing-network:
     driver: bridge
+
+volumes:
+  campaign-data:
