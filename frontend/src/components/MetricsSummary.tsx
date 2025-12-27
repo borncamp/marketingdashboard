@@ -3,12 +3,13 @@ import { Campaign } from '../types/campaign';
 
 interface MetricsSummaryProps {
   campaigns: Campaign[];
+  period: 7 | 14 | 30 | 90;
+  onPeriodChange: (period: 7 | 14 | 30 | 90) => void;
 }
 
-type TimePeriod = 7 | 30 | 90;
+type TimePeriod = 7 | 14 | 30 | 90;
 
-export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
-  const [period, setPeriod] = useState<TimePeriod>(7);
+export default function MetricsSummary({ campaigns, period, onPeriodChange }: MetricsSummaryProps) {
   const [totals, setTotals] = useState({ spend: 0, clicks: 0, impressions: 0, conversions: 0 });
   const [shopifyMetrics, setShopifyMetrics] = useState({ revenue: 0, shipping_revenue: 0, shipping_cost: 0, orders: 0 });
   const [loading, setLoading] = useState(false);
@@ -22,12 +23,18 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
 
     setLoading(true);
     try {
+      const credentials = sessionStorage.getItem('authCredentials');
+      const headers: HeadersInit = {};
+      if (credentials) {
+        headers['Authorization'] = `Basic ${credentials}`;
+      }
+
       // Fetch campaign time series for all metrics
       const [spendData, clicksData, impressionsData, conversionsData, shopifyData] = await Promise.all([
-        fetch(`/api/campaigns/all/metrics/spend?days=${period}`).then(r => r.json()),
-        fetch(`/api/campaigns/all/metrics/clicks?days=${period}`).then(r => r.json()),
-        fetch(`/api/campaigns/all/metrics/impressions?days=${period}`).then(r => r.json()),
-        fetch(`/api/campaigns/all/metrics/conversions?days=${period}`).then(r => r.json()),
+        fetch(`/api/campaigns/all/metrics/spend?days=${period}`, { headers }).then(r => r.json()),
+        fetch(`/api/campaigns/all/metrics/clicks?days=${period}`, { headers }).then(r => r.json()),
+        fetch(`/api/campaigns/all/metrics/impressions?days=${period}`, { headers }).then(r => r.json()),
+        fetch(`/api/campaigns/all/metrics/conversions?days=${period}`, { headers }).then(r => r.json()),
         fetch(`/api/shopify/metrics?days=${period}`).then(r => r.json()).catch(() => ({ total_revenue: 0, total_shipping_cost: 0, total_orders: 0 })),
       ]);
 
@@ -171,7 +178,7 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
     }
   ];
 
-  const periodLabel = period === 7 ? 'Last 7 Days' : period === 30 ? 'Last 30 Days' : 'Last 90 Days';
+  const periodLabel = period === 7 ? 'Last 7 Days' : period === 14 ? 'Last 14 Days' : period === 30 ? 'Last 30 Days' : 'Last 90 Days';
 
   return (
     <div>
@@ -179,10 +186,10 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">Performance Overview</h3>
         <div className="flex space-x-2">
-          {[7, 30, 90].map((days) => (
+          {[7, 14, 30, 90].map((days) => (
             <button
               key={days}
-              onClick={() => setPeriod(days as TimePeriod)}
+              onClick={() => onPeriodChange(days as TimePeriod)}
               className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
                 period === days
                   ? 'bg-gray-900 text-white'

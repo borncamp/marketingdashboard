@@ -5,9 +5,11 @@ import MetricsChart from './MetricsChart';
 
 interface CampaignCardProps {
   campaign: Campaign;
+  days: number;
+  onDaysChange: (days: number) => void;
 }
 
-export default function CampaignCard({ campaign }: CampaignCardProps) {
+export default function CampaignCard({ campaign, days, onDaysChange }: CampaignCardProps) {
   const [selectedMetric, setSelectedMetric] = useState<string>('spend');
   const [metricsData, setMetricsData] = useState<TimeSeriesData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -15,13 +17,13 @@ export default function CampaignCard({ campaign }: CampaignCardProps) {
 
   useEffect(() => {
     loadMetricsData(selectedMetric);
-  }, [campaign.id, selectedMetric]);
+  }, [campaign.id, selectedMetric, days]);
 
   const loadMetricsData = async (metricName: string) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await campaignApi.getCampaignMetrics(campaign.id, metricName);
+      const data = await campaignApi.getCampaignMetrics(campaign.id, metricName, days);
       setMetricsData(data);
     } catch (err) {
       setError('Failed to load metrics data');
@@ -92,20 +94,37 @@ export default function CampaignCard({ campaign }: CampaignCardProps) {
       </div>
 
       <div className="mb-4">
-        <div className="flex space-x-2">
-          {['spend', 'ctr', 'conversions'].map((metric) => (
-            <button
-              key={metric}
-              onClick={() => setSelectedMetric(metric)}
-              className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                selectedMetric === metric
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {metric.charAt(0).toUpperCase() + metric.slice(1)}
-            </button>
-          ))}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex space-x-2">
+            {['spend', 'ctr', 'conversions'].map((metric) => (
+              <button
+                key={metric}
+                onClick={() => setSelectedMetric(metric)}
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                  selectedMetric === metric
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {metric.charAt(0).toUpperCase() + metric.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div className="flex space-x-1">
+            {[7, 14, 30, 90].map((period) => (
+              <button
+                key={period}
+                onClick={() => onDaysChange(period)}
+                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                  days === period
+                    ? 'bg-gray-900 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {period}d
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

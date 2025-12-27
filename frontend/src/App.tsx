@@ -5,15 +5,20 @@ import SetupInstructions from './components/SetupInstructions';
 import Settings from './components/Settings';
 import ShopifySettings from './components/ShopifySettings';
 import Products from './components/Products';
+import Login from './components/Login';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
-function App() {
+function AppContent() {
+  const { isAuthenticated, login, logout } = useAuth();
   const [hasData, setHasData] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Initialize page from URL hash
   const getInitialPage = () => {
     const hash = window.location.hash.slice(1); // Remove the '#'
-    return hash || 'dashboard';
+    // Extract just the page name, ignoring query parameters
+    const pageName = hash.split('?')[0];
+    return pageName || 'dashboard';
   };
 
   const [currentPage, setCurrentPage] = useState(getInitialPage());
@@ -50,6 +55,11 @@ function App() {
       setLoading(false);
     }
   };
+
+  // Show login page if not authenticated
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={login} />;
+  }
 
   if (loading) {
     return (
@@ -145,6 +155,13 @@ function App() {
                 >
                   ⚙️ Settings
                 </button>
+                <button
+                  onClick={logout}
+                  className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold hover:bg-red-200 transition-colors"
+                  title="Logout"
+                >
+                  🚪 Logout
+                </button>
               </div>
             </div>
           </div>
@@ -170,6 +187,14 @@ function App() {
   }
 
   return <Onboarding onComplete={() => window.location.reload()} />;
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
 }
 
 export default App;

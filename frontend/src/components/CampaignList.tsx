@@ -5,14 +5,62 @@ import CampaignCard from './CampaignCard';
 import AllCampaignsChart from './AllCampaignsChart';
 import MetricsSummary from './MetricsSummary';
 
+type TimePeriod = 7 | 14 | 30 | 90;
+
+const getUrlPeriod = (): TimePeriod => {
+  const hashParts = window.location.hash.split('?');
+  const queryString = hashParts.length > 1 ? hashParts[1] : '';
+  const params = new URLSearchParams(queryString);
+  const period = params.get('days');
+  if (period) {
+    const parsed = parseInt(period, 10);
+    if ([7, 14, 30, 90].includes(parsed)) {
+      return parsed as TimePeriod;
+    }
+  }
+  return 7;
+};
+
+const updateUrlPeriod = (days: TimePeriod) => {
+  const hashParts = window.location.hash.split('?');
+  const hashBase = hashParts[0];
+  const params = new URLSearchParams(hashParts.length > 1 ? hashParts[1] : '');
+
+  if (days !== 7) {
+    params.set('days', days.toString());
+  } else {
+    params.delete('days');
+  }
+
+  const newUrl = params.toString() ?
+    `${window.location.pathname}${hashBase}?${params.toString()}` :
+    `${window.location.pathname}${hashBase}`;
+  window.history.pushState({}, '', newUrl);
+};
+
 export default function CampaignList() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<string>('spend');
+  const [period, setPeriod] = useState<TimePeriod>(getUrlPeriod());
+
+  const handlePeriodChange = (newPeriod: TimePeriod) => {
+    setPeriod(newPeriod);
+    updateUrlPeriod(newPeriod);
+  };
 
   useEffect(() => {
     loadCampaigns();
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setPeriod(getUrlPeriod());
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   const loadCampaigns = async () => {
@@ -109,7 +157,7 @@ export default function CampaignList() {
       </div>
 
       {/* Metrics Summary */}
-      <MetricsSummary campaigns={campaigns} />
+      <MetricsSummary campaigns={campaigns} period={period} onPeriodChange={handlePeriodChange} />
 
       {/* Combo Chart for All Campaigns */}
       <div className="mb-8">
@@ -128,7 +176,7 @@ export default function CampaignList() {
             </button>
           ))}
         </div>
-        <AllCampaignsChart metricName={selectedMetric} days={30} />
+        <AllCampaignsChart metricName={selectedMetric} days={period} />
       </div>
 
       {/* Individual Campaign Cards */}
@@ -137,7 +185,12 @@ export default function CampaignList() {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {campaigns.map((campaign) => (
-          <CampaignCard key={campaign.id} campaign={campaign} />
+          <CampaignCard
+            key={campaign.id}
+            campaign={campaign}
+            days={period}
+            onDaysChange={(days) => setPeriod(days as TimePeriod)}
+          />
         ))}
       </div>
     </div>

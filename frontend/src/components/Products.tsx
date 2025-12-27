@@ -22,26 +22,67 @@ interface ProductsResponse {
   total_count: number;
 }
 
+// Helper functions for URL parameter management
+const getUrlParams = () => {
+  // Extract query params from after the hash (e.g., /#products?campaign=foo)
+  const hashParts = window.location.hash.split('?');
+  const queryString = hashParts.length > 1 ? hashParts[1] : '';
+  const params = new URLSearchParams(queryString);
+  return {
+    campaign: params.get('campaign') || 'all',
+    sortBy: (params.get('sortBy') as 'title' | 'clicks' | 'spend') || 'clicks',
+    sortDirection: (params.get('sortDirection') as 'asc' | 'desc') || 'desc'
+  };
+};
+
+const updateUrlParams = (campaign: string, sortBy: string, sortDirection: string) => {
+  const params = new URLSearchParams();
+  if (campaign !== 'all') params.set('campaign', campaign);
+  if (sortBy !== 'clicks') params.set('sortBy', sortBy);
+  if (sortDirection !== 'desc') params.set('sortDirection', sortDirection);
+
+  // Get the hash without any existing query params (e.g., #products)
+  const hashBase = window.location.hash.split('?')[0];
+  const newUrl = params.toString() ?
+    `${window.location.pathname}${hashBase}?${params.toString()}` :
+    `${window.location.pathname}${hashBase}`;
+  window.history.pushState({}, '', newUrl);
+};
+
 export default function Products() {
+  const urlParams = getUrlParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'title' | 'clicks' | 'spend'>('clicks');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [selectedCampaign, setSelectedCampaign] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'title' | 'clicks' | 'spend'>(urlParams.sortBy);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(urlParams.sortDirection);
+  const [selectedCampaign, setSelectedCampaign] = useState<string>(urlParams.campaign);
 
   useEffect(() => {
     fetchProducts();
+
+    // Listen for browser back/forward navigation
+    const handlePopState = () => {
+      const params = getUrlParams();
+      setSelectedCampaign(params.campaign);
+      setSortBy(params.sortBy);
+      setSortDirection(params.sortDirection);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch('/api/products/?days=30', {
-        headers: {
-          'Authorization': 'Basic ' + btoa('admin:admin')
-        }
-      });
+      const credentials = sessionStorage.getItem('authCredentials');
+      const headers: HeadersInit = {};
+      if (credentials) {
+        headers['Authorization'] = `Basic ${credentials}`;
+      }
+
+      const response = await fetch('/api/products/?days=30', { headers });
 
       if (!response.ok) {
         throw new Error('Failed to fetch products');
@@ -89,12 +130,16 @@ export default function Products() {
   });
 
   const handleSort = (column: 'title' | 'clicks' | 'spend') => {
+    let newDirection: 'asc' | 'desc';
     if (sortBy === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      setSortDirection(newDirection);
     } else {
       setSortBy(column);
-      setSortDirection('desc');
+      newDirection = 'desc';
+      setSortDirection(newDirection);
     }
+    updateUrlParams(selectedCampaign, sortBy === column ? sortBy : column, newDirection);
   };
 
   const toggleExpand = async (productId: string) => {
@@ -168,7 +213,11 @@ export default function Products() {
               <select
                 id="campaign-filter"
                 value={selectedCampaign}
-                onChange={(e) => setSelectedCampaign(e.target.value)}
+                onChange={(e) => {
+                  const newCampaign = e.target.value;
+                  setSelectedCampaign(newCampaign);
+                  updateUrlParams(newCampaign, sortBy, sortDirection);
+                }}
                 className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="all">All Campaigns</option>
@@ -299,13 +348,15 @@ function ProductCharts({ productId, campaignId, productTitle }: ProductChartsPro
 
     for (const metric of metrics) {
       try {
+        const credentials = sessionStorage.getItem('authCredentials');
+        const headers: HeadersInit = {};
+        if (credentials) {
+          headers['Authorization'] = `Basic ${credentials}`;
+        }
+
         const response = await fetch(
           `/api/products/${productId}/${campaignId}/metrics/${metric}?days=30`,
-          {
-            headers: {
-              'Authorization': 'Basic ' + btoa('admin:admin')
-            }
-          }
+          { headers }
         );
 
         if (response.ok) {

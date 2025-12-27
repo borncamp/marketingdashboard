@@ -8,8 +8,35 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true,  // Enable HTTP Basic Auth
+  withCredentials: true,
 });
+
+// Add request interceptor to include auth credentials from sessionStorage
+apiClient.interceptors.request.use(
+  (config) => {
+    const credentials = sessionStorage.getItem('authCredentials');
+    if (credentials) {
+      config.headers.Authorization = `Basic ${credentials}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor to handle auth errors
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear invalid credentials and reload to login page
+      sessionStorage.removeItem('authCredentials');
+      window.location.reload();
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const campaignApi = {
   async getCampaigns(): Promise<Campaign[]> {

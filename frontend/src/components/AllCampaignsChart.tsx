@@ -31,7 +31,13 @@ export default function AllCampaignsChart({ metricName, days = 30 }: AllCampaign
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/campaigns/all/metrics/${metricName}?days=${days}`);
+      const credentials = sessionStorage.getItem('authCredentials');
+      const headers: HeadersInit = {};
+      if (credentials) {
+        headers['Authorization'] = `Basic ${credentials}`;
+      }
+
+      const response = await fetch(`/api/campaigns/all/metrics/${metricName}?days=${days}`, { headers });
       if (!response.ok) {
         throw new Error('Failed to fetch data');
       }
@@ -118,6 +124,13 @@ export default function AllCampaignsChart({ metricName, days = 30 }: AllCampaign
   // Get unit from first campaign
   const unit = campaignsData[0]?.unit || '';
 
+  // Calculate smart interval for x-axis based on days
+  // 7 days: show all (interval=0)
+  // 14 days: show all (interval=0)
+  // 30 days: show every 3rd day (interval=2)
+  // 90 days: show every 7th day (interval=6)
+  const xAxisInterval = days <= 14 ? 0 : days <= 30 ? 2 : 6;
+
   // Format value based on unit
   const formatValue = (value: number) => {
     if (unit === 'USD') {
@@ -145,7 +158,11 @@ export default function AllCampaignsChart({ metricName, days = 30 }: AllCampaign
           <XAxis
             dataKey="date"
             stroke="#6b7280"
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: 10 }}
+            interval={xAxisInterval}
+            angle={-45}
+            textAnchor="end"
+            height={80}
           />
           <YAxis
             stroke="#6b7280"
