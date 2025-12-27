@@ -8,6 +8,7 @@ from app.routers.sync import router as sync_router
 from app.routers.shopify import router as shopify_router
 from app.routers.shopify_proxy import router as shopify_proxy_router
 from app.routers.products import router as products_router
+from app.routers.meta import router as meta_router
 from app.background_tasks import shopify_sync_task
 
 
@@ -47,6 +48,7 @@ app.include_router(script_config_router)  # Public so Google Ads script can fetc
 app.include_router(campaigns_router)
 app.include_router(settings_router)
 app.include_router(products_router)
+app.include_router(meta_router)
 
 
 @app.get("/")

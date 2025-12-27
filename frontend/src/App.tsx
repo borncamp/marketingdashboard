@@ -5,6 +5,7 @@ import SetupInstructions from './components/SetupInstructions';
 import Settings from './components/Settings';
 import ShopifyAnalytics from './components/ShopifyAnalytics';
 import Products from './components/Products';
+import MetaAnalytics from './components/MetaAnalytics';
 import Login from './components/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -135,6 +136,35 @@ function AppContent() {
     );
   }
 
+  // Show Meta analytics page if requested
+  if (currentPage === 'meta') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Meta Ads Analytics</h1>
+                <p className="mt-1 text-sm text-gray-500">
+                  Campaign performance from your Meta advertising account
+                </p>
+              </div>
+              <button
+                onClick={() => navigateToPage('dashboard')}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-colors"
+              >
+                ← Back to Dashboard
+              </button>
+            </div>
+          </div>
+        </header>
+        <main>
+          <MetaAnalytics />
+        </main>
+      </div>
+    );
+  }
+
   if (hasData === true) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -164,6 +194,13 @@ function AppContent() {
                   title="Shopping Products"
                 >
                   🏷️ Products
+                </button>
+                <button
+                  onClick={() => navigateToPage('meta')}
+                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold hover:bg-blue-200 transition-colors"
+                  title="Meta Ads"
+                >
+                  📘 Meta Ads
                 </button>
                 <button
                   onClick={() => navigateToPage('shopify')}
