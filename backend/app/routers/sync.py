@@ -4,7 +4,7 @@ Sync API endpoints for receiving data from Google Ads Scripts.
 from fastapi import APIRouter, HTTPException, Header
 from typing import Optional, List
 from pydantic import BaseModel, Field
-from app.database import CampaignDatabase
+from app.database import CampaignDatabase, ProductDatabase
 from app.config import settings
 from datetime import date as DateType
 
@@ -124,3 +124,81 @@ async def get_sync_status():
         "metrics_count": last_sync['metrics_count'],
         "status": last_sync['status']
     }
+
+
+class ProductData(BaseModel):
+    """Shopping product data with metrics."""
+    product_id: str = Field(..., description="Product ID from Google Merchant Center")
+    product_title: str = Field(..., description="Product title/name")
+    metrics: List[MetricData] = Field(default_factory=list, description="List of metric data points")
+
+
+class ProductSyncRequest(BaseModel):
+    """Request to sync product data."""
+    products: List[ProductData] = Field(..., description="List of products with metrics")
+    source: str = Field(default="google_ads_script", description="Data source identifier")
+
+
+@router.post("/push-products")
+async def push_product_data(
+    sync_data: ProductSyncRequest,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key", description="Optional API key for authentication")
+):
+    """
+    Receive Shopping product data pushed from Google Ads Script.
+
+    This endpoint accepts product performance data from Google Shopping campaigns
+    and stores it in the local database.
+
+    Args:
+        sync_data: Product data to sync
+        x_api_key: Optional API key for basic authentication
+
+    Returns:
+        Success status and counts of processed records
+    """
+    # Validate API key if configured
+    if settings.sync_api_key:
+        if not x_api_key or x_api_key != settings.sync_api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or missing API key"
+            )
+
+    try:
+        # Convert Pydantic models to dict for database
+        data_dict = {
+            "products": [
+                {
+                    "product_id": product.product_id,
+                    "product_title": product.product_title,
+                    "metrics": [
+                        {
+                            "date": str(metric.date),
+                            "name": metric.name,
+                            "value": metric.value,
+                            "unit": metric.unit
+                        }
+                        for metric in product.metrics
+                    ]
+                }
+                for product in sync_data.products
+            ]
+        }
+
+        # Bulk upsert to database
+        result = ProductDatabase.bulk_upsert_from_script(data_dict["products"])
+
+        return {
+            "success": True,
+            "message": "Product data synced successfully",
+            "products_processed": result['products_processed'],
+            "metrics_processed": result['metrics_processed'],
+            "source": sync_data.source
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to sync product data: {str(e)}"
+        )

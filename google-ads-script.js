@@ -52,6 +52,22 @@ function main() {
     Logger.log('Campaigns processed: ' + result.campaigns_processed);
     Logger.log('Metrics processed: ' + result.metrics_processed);
 
+    // Fetch and push Shopping product data
+    try {
+      const productData = fetchShoppingProductData();
+
+      if (productData.products.length > 0) {
+        Logger.log('Fetched ' + productData.products.length + ' Shopping products');
+        const productResult = pushProductDataToAPI(productData);
+        Logger.log('✓ Product sync completed');
+        Logger.log('Products processed: ' + productResult.products_processed);
+      } else {
+        Logger.log('No Shopping campaign data available');
+      }
+    } catch (productError) {
+      Logger.log('Note: Product data sync skipped - ' + productError.message);
+    }
+
   } catch (error) {
     Logger.log('✗ ERROR: ' + error.message);
     Logger.log(error.stack);
@@ -197,6 +213,137 @@ function fetchCampaignData() {
 
 
 /**
+ * Fetch Shopping product performance data
+ */
+function fetchShoppingProductData() {
+  const products = {};
+  const dateRange = getDateRange(DAYS_OF_HISTORY);
+
+  Logger.log('Fetching Shopping product performance data...');
+
+  // Query historical data for Shopping products
+  const historicalQuery = `
+    SELECT
+      segments.product_item_id,
+      segments.product_title,
+      segments.date,
+      metrics.cost_micros,
+      metrics.clicks,
+      metrics.impressions,
+      metrics.ctr,
+      metrics.conversions,
+      metrics.conversions_value
+    FROM shopping_performance_view
+    WHERE segments.date DURING ${dateRange}
+    ORDER BY segments.product_item_id, segments.date ASC
+  `;
+
+  const report = AdsApp.report(historicalQuery);
+  const rows = report.rows();
+
+  while (rows.hasNext()) {
+    const row = rows.next();
+    const productId = row['segments.product_item_id'];
+    const productTitle = row['segments.product_title'];
+    const date = row['segments.date'];
+
+    // Initialize product if not exists
+    if (!products[productId]) {
+      products[productId] = {
+        product_id: productId,
+        product_title: productTitle,
+        metrics: []
+      };
+    }
+
+    // Parse metrics
+    const costMicros = parseInt(row['metrics.cost_micros']) || 0;
+    const costDollars = costMicros / 1000000;
+    const clicks = parseInt(row['metrics.clicks']) || 0;
+    const impressions = parseInt(row['metrics.impressions']) || 0;
+    const ctr = parseFloat(row['metrics.ctr']) || 0;
+    const conversions = parseFloat(row['metrics.conversions']) || 0;
+    const conversionsValue = parseFloat(row['metrics.conversions_value']) || 0;
+
+    // Add metrics for this date
+    products[productId].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
+    products[productId].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
+    products[productId].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
+    products[productId].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
+    products[productId].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
+    products[productId].metrics.push({ date: date, name: 'conversion_value', value: conversionsValue, unit: 'USD' });
+  }
+
+  // Query TODAY's data for real-time updates
+  try {
+    const todayQuery = `
+      SELECT
+        segments.product_item_id,
+        segments.product_title,
+        segments.date,
+        metrics.cost_micros,
+        metrics.clicks,
+        metrics.impressions,
+        metrics.ctr,
+        metrics.conversions,
+        metrics.conversions_value
+      FROM shopping_performance_view
+      WHERE segments.date DURING TODAY
+      ORDER BY segments.product_item_id, segments.date ASC
+    `;
+
+    const todayReport = AdsApp.report(todayQuery);
+    const todayRows = todayReport.rows();
+
+    while (todayRows.hasNext()) {
+      const row = todayRows.next();
+      const productId = row['segments.product_item_id'];
+      const productTitle = row['segments.product_title'];
+      const date = row['segments.date'];
+
+      // Initialize product if not exists
+      if (!products[productId]) {
+        products[productId] = {
+          product_id: productId,
+          product_title: productTitle,
+          metrics: []
+        };
+      }
+
+      // Parse metrics
+      const costMicros = parseInt(row['metrics.cost_micros']) || 0;
+      const costDollars = costMicros / 1000000;
+      const clicks = parseInt(row['metrics.clicks']) || 0;
+      const impressions = parseInt(row['metrics.impressions']) || 0;
+      const ctr = parseFloat(row['metrics.ctr']) || 0;
+      const conversions = parseFloat(row['metrics.conversions']) || 0;
+      const conversionsValue = parseFloat(row['metrics.conversions_value']) || 0;
+
+      // Add today's metrics
+      products[productId].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
+      products[productId].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
+      products[productId].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
+      products[productId].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
+      products[productId].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
+      products[productId].metrics.push({ date: date, name: 'conversion_value', value: conversionsValue, unit: 'USD' });
+    }
+
+    Logger.log('✓ Included today\'s product data');
+  } catch (e) {
+    Logger.log('Note: No product data available for today yet');
+  }
+
+  const productArray = Object.values(products);
+  Logger.log('Total products processed: ' + productArray.length);
+
+  return {
+    products: productArray,
+    source: 'google_ads_script'
+  };
+}
+
+
+/**
  * Get date range string for GAQL query
  */
 function getDateRange(days) {
@@ -243,6 +390,51 @@ function pushToAPI(data) {
   };
 
   Logger.log('Pushing data to API: ' + url);
+
+  const response = UrlFetchApp.fetch(url, options);
+  const responseCode = response.getResponseCode();
+  const responseBody = response.getContentText();
+
+  Logger.log('API Response Code: ' + responseCode);
+
+  if (responseCode !== 200) {
+    throw new Error('API returned error: ' + responseCode + ' - ' + responseBody);
+  }
+
+  const result = JSON.parse(responseBody);
+
+  if (!result.success) {
+    throw new Error('API indicated failure: ' + responseBody);
+  }
+
+  return result;
+}
+
+
+/**
+ * Push product data to the API endpoint
+ */
+function pushProductDataToAPI(data) {
+  // Use the same base URL but with /products endpoint
+  const url = API_ENDPOINT.replace('/api/sync/push', '/api/sync/push-products');
+
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  // Add API key if configured
+  if (API_KEY && API_KEY.length > 0) {
+    headers['X-API-Key'] = API_KEY;
+  }
+
+  const options = {
+    method: 'post',
+    headers: headers,
+    payload: JSON.stringify(data),
+    muteHttpExceptions: true
+  };
+
+  Logger.log('Pushing product data to API: ' + url);
 
   const response = UrlFetchApp.fetch(url, options);
   const responseCode = response.getResponseCode();

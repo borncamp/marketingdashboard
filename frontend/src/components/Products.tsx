@@ -1,0 +1,331 @@
+import { useState, useEffect } from 'react';
+import MetricsChart from './MetricsChart';
+
+interface ProductMetric {
+  name: string;
+  value: number;
+  unit: string;
+}
+
+interface Product {
+  product_id: string;
+  product_title: string;
+  metrics: ProductMetric[];
+  updated_at: string;
+}
+
+interface ProductsResponse {
+  success: boolean;
+  products: Product[];
+  total_count: number;
+}
+
+export default function Products() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'title' | 'clicks' | 'spend'>('clicks');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const fetchProducts = async () => {
+    try {
+      const response = await fetch('/api/products/?days=30', {
+        headers: {
+          'Authorization': 'Basic ' + btoa('admin:admin')
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch products');
+      }
+
+      const data: ProductsResponse = await response.json();
+      setProducts(data.products);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getMetricValue = (product: Product, metricName: string): number => {
+    const metric = product.metrics.find(m => m.name === metricName);
+    return metric ? metric.value : 0;
+  };
+
+  const sortedProducts = [...products].sort((a, b) => {
+    let aValue: number | string;
+    let bValue: number | string;
+
+    if (sortBy === 'title') {
+      aValue = a.product_title.toLowerCase();
+      bValue = b.product_title.toLowerCase();
+    } else {
+      aValue = getMetricValue(a, sortBy);
+      bValue = getMetricValue(b, sortBy);
+    }
+
+    const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+    return sortDirection === 'asc' ? comparison : -comparison;
+  });
+
+  const handleSort = (column: 'title' | 'clicks' | 'spend') => {
+    if (sortBy === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setSortDirection('desc');
+    }
+  };
+
+  const toggleExpand = async (productId: string) => {
+    if (expandedProduct === productId) {
+      setExpandedProduct(null);
+    } else {
+      setExpandedProduct(productId);
+    }
+  };
+
+  const formatValue = (value: number, unit: string): string => {
+    if (unit === 'USD') {
+      return `$${value.toFixed(2)}`;
+    } else if (unit === '%') {
+      return `${value.toFixed(2)}%`;
+    }
+    return value.toLocaleString();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading products...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800">Error: {error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (products.length === 0) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+          <h3 className="text-lg font-semibold text-yellow-800 mb-2">No Shopping Products Found</h3>
+          <p className="text-yellow-700">
+            No Shopping campaign data has been synced yet. Make sure you have active Shopping campaigns
+            and that the Google Ads script has run successfully.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Shopping Products Performance</h2>
+        <p className="text-gray-600">
+          Performance data for {products.length} products from Google Shopping campaigns (last 30 days)
+        </p>
+      </div>
+
+      <div className="bg-white shadow-md rounded-lg overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                onClick={() => handleSort('title')}
+              >
+                Product {sortBy === 'title' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Impressions
+              </th>
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                onClick={() => handleSort('clicks')}
+              >
+                Clicks {sortBy === 'clicks' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                CTR
+              </th>
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                onClick={() => handleSort('spend')}
+              >
+                Spend {sortBy === 'spend' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Conversions
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Conv. Value
+              </th>
+              <th className="px-6 py-3"></th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {sortedProducts.map((product) => (
+              <>
+                <tr key={product.product_id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">{product.product_title}</div>
+                    <div className="text-xs text-gray-500">ID: {product.product_id}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'impressions'), 'count')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'clicks'), 'count')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'ctr'), '%')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'spend'), 'USD')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'conversions'), 'count')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'conversion_value'), 'USD')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button
+                      onClick={() => toggleExpand(product.product_id)}
+                      className="text-blue-600 hover:text-blue-900"
+                    >
+                      {expandedProduct === product.product_id ? 'Hide Charts' : 'View Charts'}
+                    </button>
+                  </td>
+                </tr>
+                {expandedProduct === product.product_id && (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-4 bg-gray-50">
+                      <ProductCharts productId={product.product_id} productTitle={product.product_title} />
+                    </td>
+                  </tr>
+                )}
+              </>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+interface ProductChartsProps {
+  productId: string;
+  productTitle: string;
+}
+
+function ProductCharts({ productId, productTitle }: ProductChartsProps) {
+  const [timeSeriesData, setTimeSeriesData] = useState<{ [key: string]: any }>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAllTimeSeries();
+  }, [productId]);
+
+  const fetchAllTimeSeries = async () => {
+    setLoading(true);
+    const metrics = ['clicks', 'spend', 'impressions', 'ctr', 'conversions'];
+
+    const data: { [key: string]: any } = {};
+
+    for (const metric of metrics) {
+      try {
+        const response = await fetch(
+          `/api/products/${productId}/metrics/${metric}?days=30`,
+          {
+            headers: {
+              'Authorization': 'Basic ' + btoa('admin:admin')
+            }
+          }
+        );
+
+        if (response.ok) {
+          const result = await response.json();
+          data[metric] = result.time_series;
+        }
+      } catch (err) {
+        console.error(`Failed to fetch ${metric}:`, err);
+      }
+    }
+
+    setTimeSeriesData(data);
+    setLoading(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        Performance Over Time - {productTitle}
+      </h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {timeSeriesData.clicks && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Clicks</h4>
+            <MetricsChart data={timeSeriesData.clicks} color="#3b82f6" />
+          </div>
+        )}
+
+        {timeSeriesData.spend && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Spend</h4>
+            <MetricsChart data={timeSeriesData.spend} color="#ef4444" />
+          </div>
+        )}
+
+        {timeSeriesData.impressions && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Impressions</h4>
+            <MetricsChart data={timeSeriesData.impressions} color="#8b5cf6" />
+          </div>
+        )}
+
+        {timeSeriesData.ctr && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">CTR</h4>
+            <MetricsChart data={timeSeriesData.ctr} color="#10b981" />
+          </div>
+        )}
+
+        {timeSeriesData.conversions && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Conversions</h4>
+            <MetricsChart data={timeSeriesData.conversions} color="#f59e0b" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

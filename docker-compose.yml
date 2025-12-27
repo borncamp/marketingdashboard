@@ -20,8 +20,6 @@ services:
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - API_CORS_ORIGINS=http://localhost:3000,http://localhost
-      - AUTH_USERNAME=${AUTH_USERNAME:-admin}
-      - AUTH_PASSWORD=${AUTH_PASSWORD:-admin}
     volumes:
       - ./backend/app:/app/app
       - campaign-data:/app/data

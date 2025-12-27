@@ -114,6 +114,42 @@ def init_database():
             )
         """)
 
+        # Shopping products table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shopping_products (
+                product_id TEXT PRIMARY KEY,
+                product_title TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Product metrics table (time series data for Shopping products)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS product_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id TEXT NOT NULL,
+                date DATE NOT NULL,
+                metric_name TEXT NOT NULL,
+                value REAL NOT NULL,
+                unit TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (product_id) REFERENCES shopping_products(product_id) ON DELETE CASCADE,
+                UNIQUE(product_id, date, metric_name)
+            )
+        """)
+
+        # Create indexes for product metrics performance
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_product_metrics_product_date
+            ON product_metrics(product_id, date DESC)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_product_metrics_metric_name
+            ON product_metrics(metric_name)
+        """)
+
         conn.commit()
 
 
@@ -583,6 +619,161 @@ class SettingsDatabase:
                 result[key] = value
 
             return result
+
+
+class ProductDatabase:
+    """Database operations for Shopping product data."""
+
+    @staticmethod
+    def upsert_product(product_id: str, product_title: str):
+        """Insert or update a product."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO shopping_products (product_id, product_title, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(product_id) DO UPDATE SET
+                    product_title = excluded.product_title,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (product_id, product_title))
+
+    @staticmethod
+    def upsert_product_metric(product_id: str, date_value: str, metric_name: str, value: float, unit: str):
+        """Insert or update a product metric data point."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO product_metrics (product_id, date, metric_name, value, unit)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(product_id, date, metric_name) DO UPDATE SET
+                    value = excluded.value,
+                    unit = excluded.unit,
+                    created_at = CURRENT_TIMESTAMP
+            """, (product_id, date_value, metric_name, value, unit))
+
+    @staticmethod
+    def get_all_products(days: int = 30) -> List[dict]:
+        """Get all products with their aggregated metrics."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT
+                    p.product_id,
+                    p.product_title,
+                    p.updated_at
+                FROM shopping_products p
+                ORDER BY p.product_title
+            """)
+            products = []
+            for row in cursor.fetchall():
+                product = dict(row)
+
+                # Get aggregated metrics for this product
+                product['metrics'] = ProductDatabase.get_aggregated_metrics(product['product_id'], days)
+                products.append(product)
+
+            return products
+
+    @staticmethod
+    def get_aggregated_metrics(product_id: str, days: int = 30) -> List[dict]:
+        """Get aggregated metrics for a product over the last N days."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    metric_name as name,
+                    CASE
+                        WHEN metric_name = 'ctr' THEN AVG(value)
+                        ELSE SUM(value)
+                    END as value,
+                    unit
+                FROM product_metrics
+                WHERE product_id = ?
+                    AND date >= date('now', ? || ' days')
+                GROUP BY metric_name, unit
+                ORDER BY metric_name
+            """, (product_id, -days))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+    @staticmethod
+    def get_product_time_series(product_id: str, metric_name: str, days: int = 30) -> dict:
+        """Get time series data for a specific metric of a product."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    date,
+                    value,
+                    unit
+                FROM product_metrics
+                WHERE product_id = ?
+                    AND metric_name = ?
+                    AND date >= date('now', ? || ' days')
+                ORDER BY date ASC
+            """, (product_id, metric_name, -days))
+
+            data_points = [dict(row) for row in cursor.fetchall()]
+
+            if not data_points:
+                return {
+                    "metric_name": metric_name,
+                    "data_points": [],
+                    "unit": ""
+                }
+
+            return {
+                "metric_name": metric_name,
+                "data_points": data_points,
+                "unit": data_points[0]['unit'] if data_points else ""
+            }
+
+    @staticmethod
+    def bulk_upsert_from_script(products_data: List[dict]) -> dict:
+        """
+        Bulk insert/update products and metrics from Google Ads Script data.
+
+        Args:
+            products_data: List of product dictionaries with structure:
+                {
+                    "product_id": "...",
+                    "product_title": "...",
+                    "metrics": [
+                        {"date": "2024-01-01", "name": "clicks", "value": 10, "unit": "count"},
+                        ...
+                    ]
+                }
+
+        Returns:
+            dict: Summary of operation with counts
+        """
+        products_processed = 0
+        metrics_processed = 0
+
+        with get_db_connection() as conn:
+            for product in products_data:
+                product_id = product['product_id']
+                product_title = product['product_title']
+
+                # Upsert product
+                ProductDatabase.upsert_product(product_id, product_title)
+                products_processed += 1
+
+                # Upsert metrics
+                for metric in product.get('metrics', []):
+                    ProductDatabase.upsert_product_metric(
+                        product_id=product_id,
+                        date_value=metric['date'],
+                        metric_name=metric['name'],
+                        value=metric['value'],
+                        unit=metric['unit']
+                    )
+                    metrics_processed += 1
+
+        return {
+            "products_processed": products_processed,
+            "metrics_processed": metrics_processed
+        }
 
 
 # Initialize database on module import
