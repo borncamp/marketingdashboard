@@ -17,6 +17,7 @@ const getAuthHeaders = (): HeadersInit => {
 };
 
 export default function ShopifySettings({ onBack }: ShopifySettingsProps) {
+  const isEmbedded = !onBack || onBack.toString() === '(() => {})';
   const [shopName, setShopName] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
@@ -190,28 +191,8 @@ export default function ShopifySettings({ onBack }: ShopifySettingsProps) {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Shopify Integration</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Connect your Shopify store to track revenue and ROAS
-              </p>
-            </div>
-            <button
-              onClick={onBack}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              ← Back
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  const content = (
+    <div className={isEmbedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}>
         {/* Setup Instructions */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
           <h2 className="text-lg font-semibold text-blue-900 mb-3">📝 Setup Instructions</h2>
@@ -344,6 +325,36 @@ export default function ShopifySettings({ onBack }: ShopifySettingsProps) {
             Your access token is encrypted using industry-standard encryption before storage and can only be accessed with your login credentials.
           </p>
         </div>
+    </div>
+  );
+
+  if (isEmbedded) {
+    return content;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Shopify Integration</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                Connect your Shopify store to track revenue and ROAS
+              </p>
+            </div>
+            <button
+              onClick={onBack}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              ← Back
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        {content}
       </main>
     </div>
   );

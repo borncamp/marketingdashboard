@@ -3,7 +3,7 @@ import CampaignList from './components/CampaignList';
 import Onboarding from './components/Onboarding';
 import SetupInstructions from './components/SetupInstructions';
 import Settings from './components/Settings';
-import ShopifySettings from './components/ShopifySettings';
+import ShopifyAnalytics from './components/ShopifyAnalytics';
 import Products from './components/Products';
 import Login from './components/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -77,9 +77,33 @@ function AppContent() {
     return <Settings onBack={() => navigateToPage('dashboard')} />;
   }
 
-  // Show Shopify settings page if requested
+  // Show Shopify analytics page if requested
   if (currentPage === 'shopify') {
-    return <ShopifySettings onBack={() => navigateToPage('dashboard')} />;
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Shopify Analytics</h1>
+                <p className="mt-1 text-sm text-gray-500">
+                  Revenue, orders, and shipping metrics from your Shopify store
+                </p>
+              </div>
+              <button
+                onClick={() => navigateToPage('dashboard')}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-colors"
+              >
+                ← Back to Dashboard
+              </button>
+            </div>
+          </div>
+        </header>
+        <main>
+          <ShopifyAnalytics />
+        </main>
+      </div>
+    );
   }
 
   // Show Products page if requested
