@@ -6,6 +6,18 @@ interface OnboardingProps {
 
 type Step = 'welcome' | 'credentials' | 'oauth' | 'validate' | 'complete';
 
+// Helper function to get auth headers
+const getAuthHeaders = (): HeadersInit => {
+  const credentials = sessionStorage.getItem('authCredentials');
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  if (credentials) {
+    headers['Authorization'] = `Basic ${credentials}`;
+  }
+  return headers;
+};
+
 export default function Onboarding({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState<Step>('welcome');
   const [loading, setLoading] = useState(false);
@@ -30,7 +42,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/settings/oauth-url?client_id=${encodeURIComponent(clientId)}`);
+      const credentials = sessionStorage.getItem('authCredentials');
+      const headers: HeadersInit = {};
+      if (credentials) {
+        headers['Authorization'] = `Basic ${credentials}`;
+      }
+      const response = await fetch(`/api/settings/oauth-url?client_id=${encodeURIComponent(clientId)}`, { headers });
       const data = await response.json();
       setOauthUrl(data.url);
       setStep('oauth');
@@ -53,7 +70,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     try {
       const response = await fetch('/api/settings/exchange-code', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           code: authCode,
           client_id: clientId,
@@ -89,7 +106,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       // First validate
       const validateResponse = await fetch('/api/settings/validate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           developer_token: developerToken,
           client_id: clientId,
@@ -110,7 +127,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       // Then save
       const saveResponse = await fetch('/api/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           google_ads: {
             developer_token: developerToken,

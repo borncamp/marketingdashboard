@@ -4,6 +4,18 @@ interface ShopifySettingsProps {
   onBack: () => void;
 }
 
+// Helper function to get auth headers
+const getAuthHeaders = (): HeadersInit => {
+  const credentials = sessionStorage.getItem('authCredentials');
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  if (credentials) {
+    headers['Authorization'] = `Basic ${credentials}`;
+  }
+  return headers;
+};
+
 export default function ShopifySettings({ onBack }: ShopifySettingsProps) {
   const [shopName, setShopName] = useState('');
   const [accessToken, setAccessToken] = useState('');
@@ -20,7 +32,9 @@ export default function ShopifySettings({ onBack }: ShopifySettingsProps) {
   const loadSavedCredentials = async () => {
     try {
       // Try to load from backend first
-      const response = await fetch('/api/shopify/credentials');
+      const response = await fetch('/api/shopify/credentials', {
+        headers: getAuthHeaders()
+      });
       if (response.ok) {
         const data = await response.json();
         if (data.configured) {
@@ -66,9 +80,7 @@ export default function ShopifySettings({ onBack }: ShopifySettingsProps) {
       // Save to backend database (encrypted)
       const response = await fetch('/api/shopify/credentials', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           shop_name: shopName,
           access_token: accessToken
@@ -105,7 +117,9 @@ export default function ShopifySettings({ onBack }: ShopifySettingsProps) {
 
       // If token is masked, try to get from backend
       if (token === '••••••••••••••••' || !token) {
-        const credsResponse = await fetch('/api/shopify/credentials');
+        const credsResponse = await fetch('/api/shopify/credentials', {
+          headers: getAuthHeaders()
+        });
         if (credsResponse.ok) {
           const credsData = await credsResponse.json();
           if (credsData.configured) {
@@ -133,9 +147,7 @@ export default function ShopifySettings({ onBack }: ShopifySettingsProps) {
           // Fetch using backend-stored credentials
           const response = await fetch('/api/shopify-proxy/sync-from-backend', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify({ days: 30 })
           });
 
@@ -339,11 +351,17 @@ export default function ShopifySettings({ onBack }: ShopifySettingsProps) {
 
 // Helper function to fetch orders from Shopify via backend proxy
 async function fetchShopifyOrders(shopName: string, accessToken: string, days: number) {
+  const credentials = sessionStorage.getItem('authCredentials');
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  if (credentials) {
+    headers['Authorization'] = `Basic ${credentials}`;
+  }
+
   const response = await fetch('/api/shopify-proxy/fetch-orders', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       shop_name: shopName,
       access_token: accessToken,
@@ -404,11 +422,17 @@ function aggregateOrdersByDate(orders: any[]) {
 
 // Helper function to push data to backend
 async function pushToBackend(dailyMetrics: any[]) {
+  const credentials = sessionStorage.getItem('authCredentials');
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  if (credentials) {
+    headers['Authorization'] = `Basic ${credentials}`;
+  }
+
   const response = await fetch('/api/shopify/push', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       daily_metrics: dailyMetrics,
       source: 'browser_ui',
