@@ -1,16 +1,31 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from app.config import settings
 from app.routers import campaigns_router
 from app.routers.settings import router as settings_router
 from app.routers.sync import router as sync_router
 from app.routers.shopify import router as shopify_router
 from app.routers.shopify_proxy import router as shopify_proxy_router
+from app.background_tasks import shopify_sync_task
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan events."""
+    # Startup: Start background tasks
+    shopify_sync_task.interval_hours = settings.shopify_sync_interval_hours
+    shopify_sync_task.start()
+    yield
+    # Shutdown: Stop background tasks
+    await shopify_sync_task.stop()
+
 
 app = FastAPI(
     title="Marketing Campaign Tracker API",
     description="API for monitoring marketing campaigns across multiple ad platforms",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

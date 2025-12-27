@@ -103,6 +103,17 @@ def init_database():
             ON shopify_daily_metrics(date DESC)
         """)
 
+        # Settings table for storing configuration (like Shopify credentials)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                encrypted BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
 
 
@@ -479,6 +490,99 @@ class ShopifyDatabase:
 
         except Exception as e:
             raise Exception(f"Failed to bulk upsert Shopify data: {str(e)}")
+
+
+class SettingsDatabase:
+    """Database operations for application settings."""
+
+    @staticmethod
+    def set_setting(key: str, value: str, encrypted: bool = False):
+        """Set or update a setting value."""
+        from cryptography.fernet import Fernet
+        from app.config import settings as app_settings
+
+        stored_value = value
+        if encrypted and app_settings.encryption_key:
+            # Encrypt the value before storing
+            cipher = Fernet(app_settings.encryption_key.encode())
+            stored_value = cipher.encrypt(value.encode()).decode()
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO settings (key, value, encrypted, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    encrypted = excluded.encrypted,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (key, stored_value, encrypted))
+
+    @staticmethod
+    def get_setting(key: str, default: str = None) -> Optional[str]:
+        """Get a setting value."""
+        from cryptography.fernet import Fernet
+        from app.config import settings as app_settings
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT value, encrypted
+                FROM settings
+                WHERE key = ?
+            """, (key,))
+
+            row = cursor.fetchone()
+            if not row:
+                return default
+
+            value = row['value']
+            encrypted = row['encrypted']
+
+            if encrypted and app_settings.encryption_key:
+                # Decrypt the value
+                try:
+                    cipher = Fernet(app_settings.encryption_key.encode())
+                    value = cipher.decrypt(value.encode()).decode()
+                except Exception as e:
+                    print(f"Failed to decrypt setting {key}: {e}")
+                    return default
+
+            return value
+
+    @staticmethod
+    def delete_setting(key: str):
+        """Delete a setting."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM settings WHERE key = ?", (key,))
+
+    @staticmethod
+    def get_all_settings() -> dict:
+        """Get all settings (returns decrypted values)."""
+        from cryptography.fernet import Fernet
+        from app.config import settings as app_settings
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT key, value, encrypted FROM settings")
+
+            result = {}
+            for row in cursor.fetchall():
+                key = row['key']
+                value = row['value']
+                encrypted = row['encrypted']
+
+                if encrypted and app_settings.encryption_key:
+                    try:
+                        cipher = Fernet(app_settings.encryption_key.encode())
+                        value = cipher.decrypt(value.encode()).decode()
+                    except Exception:
+                        value = None
+
+                result[key] = value
+
+            return result
 
 
 # Initialize database on module import

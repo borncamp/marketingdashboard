@@ -31,9 +31,15 @@ class Settings(BaseSettings):
     # Security - Optional API key for sync endpoint
     sync_api_key: Optional[str] = None
 
+    # Encryption key for sensitive data (32-byte Fernet key)
+    encryption_key: Optional[str] = None
+
     # Authentication - HTTP Basic Auth
     auth_username: str = "admin"
     auth_password: str = "admin"  # CHANGE THIS in production!
+
+    # Background Tasks
+    shopify_sync_interval_hours: int = 1  # How often to sync Shopify data (default: 1 hour)
 
     @property
     def cors_origins_list(self) -> list[str]:

@@ -47,6 +47,7 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
 
       setShopifyMetrics({
         revenue: shopifyData.total_revenue || 0,
+        shipping_revenue: shopifyData.total_shipping_revenue || 0,
         shipping_cost: shopifyData.total_shipping_cost || 0,
         orders: shopifyData.total_orders || 0,
       });
@@ -57,19 +58,71 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
     }
   };
 
-  // Calculate overall ROAS
-  const totalCost = totals.spend + shopifyMetrics.shipping_cost;
-  const actualROAS = totalCost > 0 ? shopifyMetrics.revenue / totalCost : 0;
+  // Calculate CTR, ROAS and POAS
+  const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+
+  // ROAS = (Product Revenue + Shipping Collected) / Ad Spend
+  const totalCollected = shopifyMetrics.revenue + shopifyMetrics.shipping_revenue;
+  const actualROAS = totals.spend > 0 ? totalCollected / totals.spend : 0;
+
+  // POAS = (Product Sold + Shipping Collected - Shipping Cost) / Ad Spend
+  const totalProfit = shopifyMetrics.revenue + shopifyMetrics.shipping_revenue - shopifyMetrics.shipping_cost;
+  const actualPOAS = totals.spend > 0 ? totalProfit / totals.spend : 0;
 
   const metrics = [
     {
-      name: 'Ad Spend',
-      value: `$${totals.spend.toFixed(2)}`,
-      icon: '💰',
+      name: 'Impressions',
+      value: totals.impressions.toLocaleString(),
+      icon: '👁️',
       color: 'blue',
       bgColor: 'bg-blue-50',
       textColor: 'text-blue-600',
       borderColor: 'border-blue-200'
+    },
+    {
+      name: 'Clicks',
+      value: totals.clicks.toLocaleString(),
+      icon: '👆',
+      color: 'indigo',
+      bgColor: 'bg-indigo-50',
+      textColor: 'text-indigo-600',
+      borderColor: 'border-indigo-200'
+    },
+    {
+      name: 'CTR',
+      value: `${ctr.toFixed(2)}%`,
+      icon: '🎯',
+      color: 'cyan',
+      bgColor: 'bg-cyan-50',
+      textColor: 'text-cyan-600',
+      borderColor: 'border-cyan-200'
+    },
+    {
+      name: 'Conversions',
+      value: totals.conversions.toLocaleString(),
+      icon: '✅',
+      color: 'lime',
+      bgColor: 'bg-lime-50',
+      textColor: 'text-lime-600',
+      borderColor: 'border-lime-200'
+    },
+    {
+      name: 'Orders',
+      value: shopifyMetrics.orders.toLocaleString(),
+      icon: '🛒',
+      color: 'purple',
+      bgColor: 'bg-purple-50',
+      textColor: 'text-purple-600',
+      borderColor: 'border-purple-200'
+    },
+    {
+      name: 'Ad Spend',
+      value: `$${totals.spend.toFixed(2)}`,
+      icon: '💰',
+      color: 'yellow',
+      bgColor: 'bg-yellow-50',
+      textColor: 'text-yellow-600',
+      borderColor: 'border-yellow-200'
     },
     {
       name: 'Revenue',
@@ -79,6 +132,15 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
       bgColor: 'bg-green-50',
       textColor: 'text-green-600',
       borderColor: 'border-green-200'
+    },
+    {
+      name: 'Shipping Sold',
+      value: `$${shopifyMetrics.shipping_revenue.toFixed(2)}`,
+      icon: '🚢',
+      color: 'teal',
+      bgColor: 'bg-teal-50',
+      textColor: 'text-teal-600',
+      borderColor: 'border-teal-200'
     },
     {
       name: 'Shipping Cost',
@@ -99,13 +161,13 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
       borderColor: actualROAS >= 2 ? 'border-emerald-200' : actualROAS >= 1 ? 'border-amber-200' : 'border-red-200'
     },
     {
-      name: 'Orders',
-      value: shopifyMetrics.orders.toLocaleString(),
-      icon: '🛒',
-      color: 'purple',
-      bgColor: 'bg-purple-50',
-      textColor: 'text-purple-600',
-      borderColor: 'border-purple-200'
+      name: 'POAS',
+      value: actualPOAS > 0 ? `${actualPOAS.toFixed(2)}x` : 'N/A',
+      icon: '💎',
+      color: actualPOAS >= 1.5 ? 'emerald' : actualPOAS >= 0.75 ? 'amber' : 'red',
+      bgColor: actualPOAS >= 1.5 ? 'bg-emerald-50' : actualPOAS >= 0.75 ? 'bg-amber-50' : 'bg-red-50',
+      textColor: actualPOAS >= 1.5 ? 'text-emerald-600' : actualPOAS >= 0.75 ? 'text-amber-600' : 'text-red-600',
+      borderColor: actualPOAS >= 1.5 ? 'border-emerald-200' : actualPOAS >= 0.75 ? 'border-amber-200' : 'border-red-200'
     }
   ];
 
@@ -133,27 +195,53 @@ export default function MetricsSummary({ campaigns }: MetricsSummaryProps) {
         </div>
       </div>
 
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        {metrics.map((metric) => (
-          <div
-            key={metric.name}
-            className={`${metric.bgColor} border ${metric.borderColor} rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow ${loading ? 'opacity-50' : ''}`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-2xl">{metric.icon}</span>
-              <span className={`text-xs font-semibold ${metric.textColor} uppercase tracking-wide`}>
-                {periodLabel.split(' ')[1]}
-              </span>
+      {/* Metrics Cards - Two Rows */}
+      <div className="space-y-3">
+        {/* First Row - Campaign Metrics */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          {metrics.slice(0, 5).map((metric) => (
+            <div
+              key={metric.name}
+              className={`${metric.bgColor} border ${metric.borderColor} rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow ${loading ? 'opacity-50' : ''}`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-2xl">{metric.icon}</span>
+                <span className={`text-xs font-semibold ${metric.textColor} uppercase tracking-wide`}>
+                  {periodLabel.split(' ')[1]}
+                </span>
+              </div>
+              <div className={`text-3xl font-bold ${metric.textColor} mb-1`}>
+                {loading ? '...' : metric.value}
+              </div>
+              <div className="text-xs text-gray-500">
+                {metric.name}
+              </div>
             </div>
-            <div className={`text-3xl font-bold ${metric.textColor} mb-1`}>
-              {loading ? '...' : metric.value}
+          ))}
+        </div>
+
+        {/* Second Row - Financial Metrics */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          {metrics.slice(5).map((metric) => (
+            <div
+              key={metric.name}
+              className={`${metric.bgColor} border ${metric.borderColor} rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow ${loading ? 'opacity-50' : ''}`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-2xl">{metric.icon}</span>
+                <span className={`text-xs font-semibold ${metric.textColor} uppercase tracking-wide`}>
+                  {periodLabel.split(' ')[1]}
+                </span>
+              </div>
+              <div className={`text-3xl font-bold ${metric.textColor} mb-1`}>
+                {loading ? '...' : metric.value}
+              </div>
+              <div className="text-xs text-gray-500">
+                {metric.name}
+              </div>
             </div>
-            <div className="text-xs text-gray-500">
-              {metric.name}
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

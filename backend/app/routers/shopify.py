@@ -1,11 +1,12 @@
 """
 Shopify API endpoints for receiving revenue and order data.
 """
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Depends
 from typing import Optional, List
 from pydantic import BaseModel, Field
-from app.database import ShopifyDatabase
+from app.database import ShopifyDatabase, SettingsDatabase
 from app.config import settings
+from app.auth import verify_credentials
 from datetime import date as DateType
 
 router = APIRouter(prefix="/api/shopify", tags=["shopify"])
@@ -144,4 +145,91 @@ async def get_shopify_time_series(metric_name: str, days: int = 30):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to fetch Shopify time series: {str(e)}"
+        )
+
+
+class ShopifyCredentials(BaseModel):
+    """Shopify API credentials."""
+    shop_name: str = Field(..., description="Shopify shop name (without .myshopify.com)")
+    access_token: str = Field(..., description="Shopify Admin API access token")
+
+
+@router.post("/credentials")
+async def save_shopify_credentials(
+    credentials: ShopifyCredentials,
+    username: str = Depends(verify_credentials)
+):
+    """
+    Save Shopify credentials securely.
+    Requires authentication.
+    """
+    try:
+        # Store encrypted credentials in database
+        SettingsDatabase.set_setting("shopify_shop_name", credentials.shop_name, encrypted=False)
+        SettingsDatabase.set_setting("shopify_access_token", credentials.access_token, encrypted=True)
+
+        return {
+            "success": True,
+            "message": "Shopify credentials saved successfully"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save Shopify credentials: {str(e)}"
+        )
+
+
+@router.get("/credentials")
+async def get_shopify_credentials(
+    username: str = Depends(verify_credentials)
+):
+    """
+    Get saved Shopify credentials (token will be masked).
+    Requires authentication.
+    """
+    try:
+        shop_name = SettingsDatabase.get_setting("shopify_shop_name")
+        access_token = SettingsDatabase.get_setting("shopify_access_token")
+
+        if not shop_name or not access_token:
+            return {
+                "configured": False,
+                "shop_name": None
+            }
+
+        return {
+            "configured": True,
+            "shop_name": shop_name,
+            "access_token_masked": "shpat_" + ("•" * 20)  # Mask the token
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve Shopify credentials: {str(e)}"
+        )
+
+
+@router.delete("/credentials")
+async def delete_shopify_credentials(
+    username: str = Depends(verify_credentials)
+):
+    """
+    Delete saved Shopify credentials.
+    Requires authentication.
+    """
+    try:
+        SettingsDatabase.delete_setting("shopify_shop_name")
+        SettingsDatabase.delete_setting("shopify_access_token")
+
+        return {
+            "success": True,
+            "message": "Shopify credentials deleted successfully"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete Shopify credentials: {str(e)}"
         )

@@ -70,15 +70,44 @@ export default function AllCampaignsChart({ metricName, days = 30 }: AllCampaign
   }
 
   // Transform data for recharts - combine all campaigns by date
-  const dateMap = new Map<string, any>();
+  // First, generate all dates in the range (up to today, not future dates)
+  const allDates: string[] = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Reset to start of day
 
+  for (let i = days - 1; i >= 0; i--) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+    const dateStr = date.toISOString().split('T')[0];
+
+    // Only include dates up to today (not future dates)
+    if (date <= today) {
+      allDates.push(dateStr);
+    }
+  }
+
+  // Initialize dateMap with all dates
+  const dateMap = new Map<string, any>();
+  allDates.forEach(date => {
+    dateMap.set(date, { date });
+  });
+
+  // Fill in data from campaigns
   campaignsData.forEach((campaignData) => {
-    campaignData.data_points.forEach(point => {
-      if (!dateMap.has(point.date)) {
-        dateMap.set(point.date, { date: point.date });
+    // Initialize all dates with 0 for this campaign
+    allDates.forEach(date => {
+      const dateEntry = dateMap.get(date);
+      if (dateEntry && !dateEntry[campaignData.campaign_name]) {
+        dateEntry[campaignData.campaign_name] = 0;
       }
+    });
+
+    // Set actual values
+    campaignData.data_points.forEach(point => {
       const dateEntry = dateMap.get(point.date);
-      dateEntry[campaignData.campaign_name] = point.value;
+      if (dateEntry) {
+        dateEntry[campaignData.campaign_name] = point.value;
+      }
     });
   });
 

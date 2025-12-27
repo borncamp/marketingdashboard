@@ -63,55 +63,17 @@ function main() {
  * Fetch campaign data with metrics from Google Ads
  */
 function fetchCampaignData() {
-  const campaigns = [];
-
-  // Date range for metrics
+  const campaigns = {};
   const dateRange = getDateRange(DAYS_OF_HISTORY);
 
-  // Fetch all campaigns (excluding removed ones)
-  const campaignIterator = AdsApp.campaigns()
-    .withCondition("Status != REMOVED")
-    .get();
+  Logger.log('Fetching campaign list and metrics...');
 
-  Logger.log('Processing campaigns...');
-
-  while (campaignIterator.hasNext()) {
-    const campaign = campaignIterator.next();
-    const campaignId = campaign.getId().toString();
-    const campaignName = campaign.getName();
-    const campaignStatus = campaign.getStatus();
-
-    Logger.log('  - ' + campaignName + ' (' + campaignStatus + ')');
-
-    // Fetch metrics for this campaign
-    const metrics = fetchCampaignMetrics(campaignId, dateRange);
-
-    campaigns.push({
-      id: campaignId,
-      name: campaignName,
-      status: campaignStatus,
-      platform: 'google_ads',
-      metrics: metrics
-    });
-  }
-
-  return {
-    campaigns: campaigns,
-    source: 'google_ads_script'
-  };
-}
-
-
-/**
- * Fetch metrics for a specific campaign
- */
-function fetchCampaignMetrics(campaignId, dateRange) {
-  const metrics = [];
-
-  // GAQL query to get daily metrics
-  const query = `
+  // First query: Get all campaigns with historical data
+  const historicalQuery = `
     SELECT
       campaign.id,
+      campaign.name,
+      campaign.status,
       segments.date,
       metrics.cost_micros,
       metrics.clicks,
@@ -119,37 +81,118 @@ function fetchCampaignMetrics(campaignId, dateRange) {
       metrics.ctr,
       metrics.conversions
     FROM campaign
-    WHERE campaign.id = ${campaignId}
+    WHERE campaign.status != REMOVED
       AND segments.date DURING ${dateRange}
-    ORDER BY segments.date ASC
+    ORDER BY campaign.id, segments.date ASC
   `;
 
-  const report = AdsApp.report(query);
+  const report = AdsApp.report(historicalQuery);
   const rows = report.rows();
 
   while (rows.hasNext()) {
     const row = rows.next();
+    const campaignId = row['campaign.id'];
+    const campaignName = row['campaign.name'];
+    const campaignStatus = row['campaign.status'];
     const date = row['segments.date'];
 
-    // Cost is in micros (millionths), convert to dollars
+    // Initialize campaign if not exists
+    if (!campaigns[campaignId]) {
+      campaigns[campaignId] = {
+        id: campaignId,
+        name: campaignName,
+        status: campaignStatus,
+        platform: 'google_ads',
+        metrics: []
+      };
+      Logger.log('  - ' + campaignName + ' (' + campaignStatus + ')');
+    }
+
+    // Parse metrics
     const costMicros = parseInt(row['metrics.cost_micros']) || 0;
     const costDollars = costMicros / 1000000;
-
-    // Parse other metrics
     const clicks = parseInt(row['metrics.clicks']) || 0;
     const impressions = parseInt(row['metrics.impressions']) || 0;
     const ctr = parseFloat(row['metrics.ctr']) || 0;
     const conversions = parseFloat(row['metrics.conversions']) || 0;
 
-    // Add each metric as a separate data point
-    metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
-    metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
-    metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
-    metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });  // Convert to percentage
-    metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
+    // Add metrics
+    campaigns[campaignId].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
+    campaigns[campaignId].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
+    campaigns[campaignId].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
+    campaigns[campaignId].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
+    campaigns[campaignId].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
   }
 
-  return metrics;
+  // Second query: Get TODAY's data for real-time updates
+  try {
+    const todayQuery = `
+      SELECT
+        campaign.id,
+        campaign.name,
+        campaign.status,
+        segments.date,
+        metrics.cost_micros,
+        metrics.clicks,
+        metrics.impressions,
+        metrics.ctr,
+        metrics.conversions
+      FROM campaign
+      WHERE campaign.status != REMOVED
+        AND segments.date DURING TODAY
+      ORDER BY campaign.id, segments.date ASC
+    `;
+
+    const todayReport = AdsApp.report(todayQuery);
+    const todayRows = todayReport.rows();
+
+    while (todayRows.hasNext()) {
+      const row = todayRows.next();
+      const campaignId = row['campaign.id'];
+      const campaignName = row['campaign.name'];
+      const campaignStatus = row['campaign.status'];
+      const date = row['segments.date'];
+
+      // Initialize campaign if not exists (in case it's a new campaign today)
+      if (!campaigns[campaignId]) {
+        campaigns[campaignId] = {
+          id: campaignId,
+          name: campaignName,
+          status: campaignStatus,
+          platform: 'google_ads',
+          metrics: []
+        };
+      }
+
+      // Parse metrics
+      const costMicros = parseInt(row['metrics.cost_micros']) || 0;
+      const costDollars = costMicros / 1000000;
+      const clicks = parseInt(row['metrics.clicks']) || 0;
+      const impressions = parseInt(row['metrics.impressions']) || 0;
+      const ctr = parseFloat(row['metrics.ctr']) || 0;
+      const conversions = parseFloat(row['metrics.conversions']) || 0;
+
+      // Add today's metrics
+      campaigns[campaignId].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
+      campaigns[campaignId].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
+      campaigns[campaignId].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
+      campaigns[campaignId].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
+      campaigns[campaignId].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
+    }
+
+    Logger.log('✓ Included today\'s real-time data');
+  } catch (e) {
+    Logger.log('Note: No data available for today yet');
+  }
+
+  // Convert to array
+  const campaignArray = Object.values(campaigns);
+  Logger.log('Total campaigns processed: ' + campaignArray.length);
+
+  return {
+    campaigns: campaignArray,
+    source: 'google_ads_script'
+  };
 }
 
 
