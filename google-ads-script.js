@@ -6,10 +6,13 @@
  * 2. Click Tools & Settings → Bulk Actions → Scripts
  * 3. Click the "+" button to create a new script
  * 4. Paste this entire code
- * 5. Update the API_ENDPOINT constant below with your domain
+ * 5. Update the API_BASE_URL constant below with your domain
  * 6. Optional: Set API_KEY if you want authentication
  * 7. Click "Preview" to test, then "Save"
  * 8. Schedule to run every hour or daily
+ *
+ * The script fetches its configuration from your server at runtime,
+ * so you can change settings without updating the script.
  *
  * This script will:
  * - Fetch all active campaigns
@@ -19,16 +22,61 @@
  */
 
 // ========== CONFIGURATION ==========
-// Update this to your deployed API endpoint
-const API_ENDPOINT = 'https://marketing.brianborncamp.com/api/sync/push';
+// Update this to your deployed domain
+const API_BASE_URL = 'https://marketing.brianborncamp.com';
 
 // Optional: Set an API key for basic authentication
 const API_KEY = '';  // Leave empty if not using authentication
 
-// Number of days of historical data to fetch
-const DAYS_OF_HISTORY = 30;
-
 // ====================================
+// Runtime config (fetched from server)
+let CONFIG = null;
+
+
+/**
+ * Fetch runtime configuration from the server
+ */
+function fetchConfig() {
+  try {
+    const url = API_BASE_URL + '/api/script-config';
+    const response = UrlFetchApp.fetch(url, {
+      method: 'GET',
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() === 200) {
+      CONFIG = JSON.parse(response.getContentText());
+      Logger.log('✓ Loaded config version: ' + CONFIG.version);
+      Logger.log('  Days of history: ' + CONFIG.days_of_history);
+      Logger.log('  Campaign status filter: ' + CONFIG.campaign_filters.status);
+      Logger.log('  Require impressions: ' + CONFIG.campaign_filters.require_impressions);
+      return true;
+    } else {
+      Logger.log('⚠ Could not fetch config from server, using defaults');
+      // Fallback defaults
+      CONFIG = {
+        days_of_history: 30,
+        product_days_of_history: 7,
+        campaign_filters: { status: 'ENABLED', require_impressions: true },
+        metrics: ['cost_micros', 'clicks', 'impressions', 'ctr', 'conversions', 'conversions_value'],
+        query_settings: { include_today: true },
+        endpoints: { push_campaigns: '/api/sync/push', push_products: '/api/sync/push-products' }
+      };
+      return false;
+    }
+  } catch (e) {
+    Logger.log('⚠ Error fetching config: ' + e.message + ', using defaults');
+    CONFIG = {
+      days_of_history: 30,
+      product_days_of_history: 7,
+      campaign_filters: { status: 'ENABLED', require_impressions: true },
+      metrics: ['cost_micros', 'clicks', 'impressions', 'ctr', 'conversions', 'conversions_value'],
+      query_settings: { include_today: true },
+      endpoints: { push_campaigns: '/api/sync/push', push_products: '/api/sync/push-products' }
+    };
+    return false;
+  }
+}
 
 
 /**
@@ -40,6 +88,9 @@ function main() {
   Logger.log('========================================');
 
   try {
+    // Fetch configuration from server
+    fetchConfig();
+
     // Fetch campaign data
     const campaignData = fetchCampaignData();
 
@@ -80,7 +131,7 @@ function main() {
  */
 function fetchCampaignData() {
   const campaigns = {};
-  const dateRange = getDateRange(DAYS_OF_HISTORY);
+  const dateRange = getDateRange(CONFIG.days_of_history);
 
   Logger.log('Fetching campaign list and metrics...');
 
@@ -217,13 +268,70 @@ function fetchCampaignData() {
  */
 function fetchShoppingProductData() {
   const products = {};
-  const dateRange = getDateRange(DAYS_OF_HISTORY);
+  const productDays = CONFIG.product_days_of_history || CONFIG.days_of_history;
+  const dateRange = getDateRange(productDays);
 
-  Logger.log('Fetching Shopping product performance data...');
+  Logger.log('Fetching Shopping product performance data (last ' + productDays + ' days)...');
 
-  // Query historical data for Shopping products
-  const historicalQuery = `
+  // Step 1: Get currently enabled product item IDs from product groups
+  Logger.log('Step 1: Finding currently enabled product item IDs in ad groups...');
+  const enabledProducts = {};  // Map of campaign_id|product_id -> true
+
+  const productGroupQuery = `
     SELECT
+      campaign.id,
+      ad_group.id,
+      ad_group_criterion.listing_group.case_value.product_item_id.value,
+      ad_group_criterion.status
+    FROM ad_group_criterion
+    WHERE campaign.status = 'ENABLED'
+      AND ad_group.status = 'ENABLED'
+      AND ad_group_criterion.type = 'LISTING_GROUP'
+      AND ad_group_criterion.status = 'ENABLED'
+      AND ad_group_criterion.listing_group.type = 'UNIT'
+  `;
+
+  try {
+    const pgReport = AdsApp.report(productGroupQuery);
+    const pgRows = pgReport.rows();
+
+    let rowCount = 0;
+    let nullCount = 0;
+
+    while (pgRows.hasNext()) {
+      const row = pgRows.next();
+      rowCount++;
+      const campaignId = row['campaign.id'];
+      const productItemId = row['ad_group_criterion.listing_group.case_value.product_item_id.value'];
+
+      if (productItemId && productItemId.trim() !== '') {
+        const key = campaignId + '|' + productItemId;
+        enabledProducts[key] = true;
+      } else {
+        nullCount++;
+      }
+    }
+
+    Logger.log('Product group query returned ' + rowCount + ' rows (' + nullCount + ' with null product_item_id)');
+    Logger.log('Found ' + Object.keys(enabledProducts).length + ' unique enabled product item IDs');
+
+    if (Object.keys(enabledProducts).length === 0) {
+      Logger.log('WARNING: No enabled products found! Falling back to include all products.');
+    }
+  } catch (e) {
+    Logger.log('ERROR fetching product groups: ' + e.message);
+    Logger.log('Stack: ' + e.stack);
+    Logger.log('Falling back to performance-only data (all products will be included)');
+  }
+
+  // Step 2: Get performance data for the date range
+  Logger.log('Step 2: Fetching performance metrics...');
+
+  const performanceQuery = `
+    SELECT
+      campaign.id,
+      campaign.name,
+      campaign.status,
       segments.product_item_id,
       segments.product_title,
       segments.date,
@@ -234,24 +342,37 @@ function fetchShoppingProductData() {
       metrics.conversions,
       metrics.conversions_value
     FROM shopping_performance_view
-    WHERE segments.date DURING ${dateRange}
+    WHERE campaign.status = 'ENABLED'
+      AND segments.date DURING ${dateRange}
     ORDER BY segments.product_item_id, segments.date ASC
   `;
 
-  const report = AdsApp.report(historicalQuery);
+  const report = AdsApp.report(performanceQuery);
   const rows = report.rows();
 
   while (rows.hasNext()) {
     const row = rows.next();
+    const campaignId = row['campaign.id'];
+    const campaignName = row['campaign.name'];
     const productId = row['segments.product_item_id'];
     const productTitle = row['segments.product_title'];
     const date = row['segments.date'];
 
-    // Initialize product if not exists
-    if (!products[productId]) {
-      products[productId] = {
+    // Create unique key for product-campaign combination
+    const productCampaignKey = campaignId + '|' + productId;
+
+    // FILTER: Only include if this product is currently enabled in the campaign's product groups
+    if (Object.keys(enabledProducts).length > 0 && !enabledProducts[productCampaignKey]) {
+      continue;  // Skip products that are not currently enabled
+    }
+
+    // Initialize product-campaign combination if not exists
+    if (!products[productCampaignKey]) {
+      products[productCampaignKey] = {
         product_id: productId,
         product_title: productTitle,
+        campaign_id: campaignId,
+        campaign_name: campaignName,
         metrics: []
       };
     }
@@ -266,46 +387,65 @@ function fetchShoppingProductData() {
     const conversionsValue = parseFloat(row['metrics.conversions_value']) || 0;
 
     // Add metrics for this date
-    products[productId].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
-    products[productId].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
-    products[productId].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
-    products[productId].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
-    products[productId].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
-    products[productId].metrics.push({ date: date, name: 'conversion_value', value: conversionsValue, unit: 'USD' });
+    products[productCampaignKey].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
+    products[productCampaignKey].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
+    products[productCampaignKey].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
+    products[productCampaignKey].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
+    products[productCampaignKey].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
+    products[productCampaignKey].metrics.push({ date: date, name: 'conversion_value', value: conversionsValue, unit: 'USD' });
   }
 
   // Query TODAY's data for real-time updates
-  try {
-    const todayQuery = `
-      SELECT
-        segments.product_item_id,
-        segments.product_title,
-        segments.date,
-        metrics.cost_micros,
-        metrics.clicks,
-        metrics.impressions,
-        metrics.ctr,
-        metrics.conversions,
-        metrics.conversions_value
-      FROM shopping_performance_view
-      WHERE segments.date DURING TODAY
-      ORDER BY segments.product_item_id, segments.date ASC
-    `;
+  if (CONFIG.query_settings.include_today) {
+    try {
+      Logger.log('Step 3: Fetching today\'s data...');
 
-    const todayReport = AdsApp.report(todayQuery);
-    const todayRows = todayReport.rows();
+      const todayQuery = `
+        SELECT
+          campaign.id,
+          campaign.name,
+          campaign.status,
+          segments.product_item_id,
+          segments.product_title,
+          segments.date,
+          metrics.cost_micros,
+          metrics.clicks,
+          metrics.impressions,
+          metrics.ctr,
+          metrics.conversions,
+          metrics.conversions_value
+        FROM shopping_performance_view
+        WHERE campaign.status = 'ENABLED'
+          AND segments.date DURING TODAY
+        ORDER BY segments.product_item_id, segments.date ASC
+      `;
 
-    while (todayRows.hasNext()) {
-      const row = todayRows.next();
-      const productId = row['segments.product_item_id'];
-      const productTitle = row['segments.product_title'];
-      const date = row['segments.date'];
+      const todayReport = AdsApp.report(todayQuery);
+      const todayRows = todayReport.rows();
 
-      // Initialize product if not exists
-      if (!products[productId]) {
-        products[productId] = {
+      while (todayRows.hasNext()) {
+        const row = todayRows.next();
+        const campaignId = row['campaign.id'];
+        const campaignName = row['campaign.name'];
+        const productId = row['segments.product_item_id'];
+        const productTitle = row['segments.product_title'];
+        const date = row['segments.date'];
+
+        // Create unique key for product-campaign combination
+        const productCampaignKey = campaignId + '|' + productId;
+
+        // FILTER: Only include if this product is currently enabled in the campaign's product groups
+        if (Object.keys(enabledProducts).length > 0 && !enabledProducts[productCampaignKey]) {
+          continue;  // Skip products that are not currently enabled
+        }
+
+      // Initialize product-campaign combination if not exists
+      if (!products[productCampaignKey]) {
+        products[productCampaignKey] = {
           product_id: productId,
           product_title: productTitle,
+          campaign_id: campaignId,
+          campaign_name: campaignName,
           metrics: []
         };
       }
@@ -320,17 +460,18 @@ function fetchShoppingProductData() {
       const conversionsValue = parseFloat(row['metrics.conversions_value']) || 0;
 
       // Add today's metrics
-      products[productId].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
-      products[productId].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
-      products[productId].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
-      products[productId].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
-      products[productId].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
-      products[productId].metrics.push({ date: date, name: 'conversion_value', value: conversionsValue, unit: 'USD' });
+      products[productCampaignKey].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
+      products[productCampaignKey].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
+      products[productCampaignKey].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
+      products[productCampaignKey].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
+      products[productCampaignKey].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
+      products[productCampaignKey].metrics.push({ date: date, name: 'conversion_value', value: conversionsValue, unit: 'USD' });
     }
 
-    Logger.log('✓ Included today\'s product data');
-  } catch (e) {
-    Logger.log('Note: No product data available for today yet');
+      Logger.log('✓ Included today\'s product data');
+    } catch (e) {
+      Logger.log('Note: No product data available for today yet');
+    }
   }
 
   const productArray = Object.values(products);
@@ -371,7 +512,7 @@ function getDateRange(days) {
  * Push data to the API endpoint
  */
 function pushToAPI(data) {
-  const url = API_ENDPOINT;
+  const url = API_BASE_URL + CONFIG.endpoints.push_campaigns;
 
   const headers = {
     'Content-Type': 'application/json'
@@ -415,8 +556,8 @@ function pushToAPI(data) {
  * Push product data to the API endpoint
  */
 function pushProductDataToAPI(data) {
-  // Use the same base URL but with /products endpoint
-  const url = API_ENDPOINT.replace('/api/sync/push', '/api/sync/push-products');
+  // Use the products endpoint from config
+  const url = API_BASE_URL + CONFIG.endpoints.push_products;
 
   const headers = {
     'Content-Type': 'application/json'

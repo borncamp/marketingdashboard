@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.config import settings
-from app.routers import campaigns_router
+from app.routers import campaigns_router, script_config_router
 from app.routers.settings import router as settings_router
 from app.routers.sync import router as sync_router
 from app.routers.shopify import router as shopify_router
@@ -41,6 +41,7 @@ app.add_middleware(
 app.include_router(sync_router)
 app.include_router(shopify_router)
 app.include_router(shopify_proxy_router)
+app.include_router(script_config_router)  # Public so Google Ads script can fetch config
 
 # Protected routes (HTTP Basic Auth required)
 app.include_router(campaigns_router)

@@ -130,6 +130,8 @@ class ProductData(BaseModel):
     """Shopping product data with metrics."""
     product_id: str = Field(..., description="Product ID from Google Merchant Center")
     product_title: str = Field(..., description="Product title/name")
+    campaign_id: Optional[str] = Field(None, description="Campaign ID this product belongs to")
+    campaign_name: Optional[str] = Field(None, description="Campaign name this product belongs to")
     metrics: List[MetricData] = Field(default_factory=list, description="List of metric data points")
 
 
@@ -172,6 +174,8 @@ async def push_product_data(
                 {
                     "product_id": product.product_id,
                     "product_title": product.product_title,
+                    "campaign_id": product.campaign_id,
+                    "campaign_name": product.campaign_name,
                     "metrics": [
                         {
                             "date": str(metric.date),

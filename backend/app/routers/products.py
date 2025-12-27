@@ -39,18 +39,20 @@ async def get_all_products(
         )
 
 
-@router.get("/{product_id}/metrics/{metric_name}")
+@router.get("/{product_id}/{campaign_id}/metrics/{metric_name}")
 async def get_product_metric_time_series(
     product_id: str,
+    campaign_id: str,
     metric_name: str,
     days: int = 30,
     credentials=Depends(verify_credentials)
 ):
     """
-    Get time series data for a specific metric of a product.
+    Get time series data for a specific metric of a product in a campaign.
 
     Args:
         product_id: The product ID
+        campaign_id: The campaign ID
         metric_name: Name of the metric (e.g., 'clicks', 'spend', 'impressions')
         days: Number of days of historical data (default: 30)
 
@@ -60,6 +62,7 @@ async def get_product_metric_time_series(
     try:
         time_series = ProductDatabase.get_product_time_series(
             product_id=product_id,
+            campaign_id=campaign_id,
             metric_name=metric_name,
             days=days
         )
@@ -67,6 +70,7 @@ async def get_product_metric_time_series(
         return {
             "success": True,
             "product_id": product_id,
+            "campaign_id": campaign_id,
             "time_series": time_series
         }
 

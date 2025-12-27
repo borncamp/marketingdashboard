@@ -9,7 +9,30 @@ import Products from './components/Products';
 function App() {
   const [hasData, setHasData] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState('dashboard');
+
+  // Initialize page from URL hash
+  const getInitialPage = () => {
+    const hash = window.location.hash.slice(1); // Remove the '#'
+    return hash || 'dashboard';
+  };
+
+  const [currentPage, setCurrentPage] = useState(getInitialPage());
+
+  // Update URL when page changes
+  const navigateToPage = (page: string) => {
+    window.location.hash = page;
+    setCurrentPage(page);
+  };
+
+  // Listen for hash changes (back/forward buttons)
+  useEffect(() => {
+    const handleHashChange = () => {
+      setCurrentPage(getInitialPage());
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   useEffect(() => {
     checkDataStatus();
@@ -41,12 +64,12 @@ function App() {
 
   // Show settings page if requested
   if (currentPage === 'settings') {
-    return <Settings onBack={() => setCurrentPage('dashboard')} />;
+    return <Settings onBack={() => navigateToPage('dashboard')} />;
   }
 
   // Show Shopify settings page if requested
   if (currentPage === 'shopify') {
-    return <ShopifySettings onBack={() => setCurrentPage('dashboard')} />;
+    return <ShopifySettings onBack={() => navigateToPage('dashboard')} />;
   }
 
   // Show Products page if requested
@@ -63,7 +86,7 @@ function App() {
                 </p>
               </div>
               <button
-                onClick={() => setCurrentPage('dashboard')}
+                onClick={() => navigateToPage('dashboard')}
                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-colors"
               >
                 ← Back to Dashboard
@@ -102,21 +125,21 @@ function App() {
                   🔄 Refresh
                 </button>
                 <button
-                  onClick={() => setCurrentPage('products')}
+                  onClick={() => navigateToPage('products')}
                   className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold hover:bg-purple-200 transition-colors"
                   title="Shopping Products"
                 >
                   🏷️ Products
                 </button>
                 <button
-                  onClick={() => setCurrentPage('shopify')}
+                  onClick={() => navigateToPage('shopify')}
                   className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold hover:bg-green-200 transition-colors"
                   title="Shopify Integration"
                 >
                   🛍️ Shopify
                 </button>
                 <button
-                  onClick={() => setCurrentPage('settings')}
+                  onClick={() => navigateToPage('settings')}
                   className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold hover:bg-gray-200 transition-colors"
                   title="Settings"
                 >

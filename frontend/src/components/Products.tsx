@@ -10,6 +10,8 @@ interface ProductMetric {
 interface Product {
   product_id: string;
   product_title: string;
+  campaign_id: string;
+  campaign_name: string;
   metrics: ProductMetric[];
   updated_at: string;
 }
@@ -27,6 +29,7 @@ export default function Products() {
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'title' | 'clicks' | 'spend'>('clicks');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [selectedCampaign, setSelectedCampaign] = useState<string>('all');
 
   useEffect(() => {
     fetchProducts();
@@ -59,7 +62,17 @@ export default function Products() {
     return metric ? metric.value : 0;
   };
 
-  const sortedProducts = [...products].sort((a, b) => {
+  // Get unique campaigns for filter dropdown
+  const campaigns = Array.from(new Set(products.map(p => p.campaign_name).filter(Boolean)))
+    .sort();
+
+  // Filter by selected campaign
+  const filteredProducts = selectedCampaign === 'all'
+    ? products
+    : products.filter(p => p.campaign_name === selectedCampaign);
+
+  // Sort filtered products
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
     let aValue: number | string;
     let bValue: number | string;
 
@@ -139,10 +152,35 @@ export default function Products() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Shopping Products Performance</h2>
-        <p className="text-gray-600">
-          Performance data for {products.length} products from Google Shopping campaigns (last 30 days)
-        </p>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Shopping Products Performance</h2>
+            <p className="text-gray-600">
+              Showing {sortedProducts.length} of {products.length} products from Google Shopping campaigns (last 30 days)
+            </p>
+          </div>
+
+          {campaigns.length > 0 && (
+            <div className="flex items-center space-x-2">
+              <label htmlFor="campaign-filter" className="text-sm font-medium text-gray-700">
+                Campaign:
+              </label>
+              <select
+                id="campaign-filter"
+                value={selectedCampaign}
+                onChange={(e) => setSelectedCampaign(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">All Campaigns</option>
+                {campaigns.map((campaign) => (
+                  <option key={campaign} value={campaign}>
+                    {campaign}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="bg-white shadow-md rounded-lg overflow-hidden">
@@ -154,6 +192,9 @@ export default function Products() {
                 onClick={() => handleSort('title')}
               >
                 Product {sortBy === 'title' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Campaign
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Impressions
@@ -190,6 +231,9 @@ export default function Products() {
                     <div className="text-sm font-medium text-gray-900">{product.product_title}</div>
                     <div className="text-xs text-gray-500">ID: {product.product_id}</div>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{product.campaign_name || 'N/A'}</div>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {formatValue(getMetricValue(product, 'impressions'), 'count')}
                   </td>
@@ -219,8 +263,8 @@ export default function Products() {
                 </tr>
                 {expandedProduct === product.product_id && (
                   <tr>
-                    <td colSpan={8} className="px-6 py-4 bg-gray-50">
-                      <ProductCharts productId={product.product_id} productTitle={product.product_title} />
+                    <td colSpan={9} className="px-6 py-4 bg-gray-50">
+                      <ProductCharts productId={product.product_id} campaignId={product.campaign_id} productTitle={product.product_title} />
                     </td>
                   </tr>
                 )}
@@ -235,16 +279,17 @@ export default function Products() {
 
 interface ProductChartsProps {
   productId: string;
+  campaignId: string;
   productTitle: string;
 }
 
-function ProductCharts({ productId, productTitle }: ProductChartsProps) {
+function ProductCharts({ productId, campaignId, productTitle }: ProductChartsProps) {
   const [timeSeriesData, setTimeSeriesData] = useState<{ [key: string]: any }>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchAllTimeSeries();
-  }, [productId]);
+  }, [productId, campaignId]);
 
   const fetchAllTimeSeries = async () => {
     setLoading(true);
@@ -255,7 +300,7 @@ function ProductCharts({ productId, productTitle }: ProductChartsProps) {
     for (const metric of metrics) {
       try {
         const response = await fetch(
-          `/api/products/${productId}/metrics/${metric}?days=30`,
+          `/api/products/${productId}/${campaignId}/metrics/${metric}?days=30`,
           {
             headers: {
               'Authorization': 'Basic ' + btoa('admin:admin')

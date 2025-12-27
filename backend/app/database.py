@@ -114,35 +114,39 @@ def init_database():
             )
         """)
 
-        # Shopping products table
+        # Shopping products table (one row per product-campaign combination)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS shopping_products (
-                product_id TEXT PRIMARY KEY,
+                product_id TEXT NOT NULL,
                 product_title TEXT NOT NULL,
+                campaign_id TEXT NOT NULL,
+                campaign_name TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (product_id, campaign_id)
             )
         """)
 
-        # Product metrics table (time series data for Shopping products)
+        # Product metrics table (time series data for Shopping products per campaign)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS product_metrics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 product_id TEXT NOT NULL,
+                campaign_id TEXT NOT NULL,
                 date DATE NOT NULL,
                 metric_name TEXT NOT NULL,
                 value REAL NOT NULL,
                 unit TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (product_id) REFERENCES shopping_products(product_id) ON DELETE CASCADE,
-                UNIQUE(product_id, date, metric_name)
+                FOREIGN KEY (product_id, campaign_id) REFERENCES shopping_products(product_id, campaign_id) ON DELETE CASCADE,
+                UNIQUE(product_id, campaign_id, date, metric_name)
             )
         """)
 
         # Create indexes for product metrics performance
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_product_metrics_product_date
-            ON product_metrics(product_id, date DESC)
+            CREATE INDEX IF NOT EXISTS idx_product_metrics_product_campaign_date
+            ON product_metrics(product_id, campaign_id, date DESC)
         """)
 
         cursor.execute("""
@@ -625,31 +629,35 @@ class ProductDatabase:
     """Database operations for Shopping product data."""
 
     @staticmethod
-    def upsert_product(product_id: str, product_title: str):
-        """Insert or update a product."""
+    def upsert_product(product_id: str, product_title: str, campaign_id: str, campaign_name: str = None):
+        """Insert or update a product-campaign combination."""
+        if not campaign_id:
+            raise ValueError("campaign_id is required")
+
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO shopping_products (product_id, product_title, updated_at)
-                VALUES (?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(product_id) DO UPDATE SET
+                INSERT INTO shopping_products (product_id, product_title, campaign_id, campaign_name, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(product_id, campaign_id) DO UPDATE SET
                     product_title = excluded.product_title,
+                    campaign_name = excluded.campaign_name,
                     updated_at = CURRENT_TIMESTAMP
-            """, (product_id, product_title))
+            """, (product_id, product_title, campaign_id, campaign_name))
 
     @staticmethod
-    def upsert_product_metric(product_id: str, date_value: str, metric_name: str, value: float, unit: str):
-        """Insert or update a product metric data point."""
+    def upsert_product_metric(product_id: str, campaign_id: str, date_value: str, metric_name: str, value: float, unit: str):
+        """Insert or update a product metric data point for a specific campaign."""
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO product_metrics (product_id, date, metric_name, value, unit)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(product_id, date, metric_name) DO UPDATE SET
+                INSERT INTO product_metrics (product_id, campaign_id, date, metric_name, value, unit)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(product_id, campaign_id, date, metric_name) DO UPDATE SET
                     value = excluded.value,
                     unit = excluded.unit,
                     created_at = CURRENT_TIMESTAMP
-            """, (product_id, date_value, metric_name, value, unit))
+            """, (product_id, campaign_id, date_value, metric_name, value, unit))
 
     @staticmethod
     def get_all_products(days: int = 30) -> List[dict]:
@@ -660,6 +668,8 @@ class ProductDatabase:
                 SELECT DISTINCT
                     p.product_id,
                     p.product_title,
+                    p.campaign_id,
+                    p.campaign_name,
                     p.updated_at
                 FROM shopping_products p
                 ORDER BY p.product_title
@@ -668,15 +678,15 @@ class ProductDatabase:
             for row in cursor.fetchall():
                 product = dict(row)
 
-                # Get aggregated metrics for this product
-                product['metrics'] = ProductDatabase.get_aggregated_metrics(product['product_id'], days)
+                # Get aggregated metrics for this product-campaign combination
+                product['metrics'] = ProductDatabase.get_aggregated_metrics(product['product_id'], product['campaign_id'], days)
                 products.append(product)
 
             return products
 
     @staticmethod
-    def get_aggregated_metrics(product_id: str, days: int = 30) -> List[dict]:
-        """Get aggregated metrics for a product over the last N days."""
+    def get_aggregated_metrics(product_id: str, campaign_id: str, days: int = 30) -> List[dict]:
+        """Get aggregated metrics for a product in a specific campaign over the last N days."""
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -689,16 +699,17 @@ class ProductDatabase:
                     unit
                 FROM product_metrics
                 WHERE product_id = ?
+                    AND campaign_id = ?
                     AND date >= date('now', ? || ' days')
                 GROUP BY metric_name, unit
                 ORDER BY metric_name
-            """, (product_id, -days))
+            """, (product_id, campaign_id, -days))
 
             return [dict(row) for row in cursor.fetchall()]
 
     @staticmethod
-    def get_product_time_series(product_id: str, metric_name: str, days: int = 30) -> dict:
-        """Get time series data for a specific metric of a product."""
+    def get_product_time_series(product_id: str, campaign_id: str, metric_name: str, days: int = 30) -> dict:
+        """Get time series data for a specific metric of a product in a specific campaign."""
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -708,10 +719,11 @@ class ProductDatabase:
                     unit
                 FROM product_metrics
                 WHERE product_id = ?
+                    AND campaign_id = ?
                     AND metric_name = ?
                     AND date >= date('now', ? || ' days')
                 ORDER BY date ASC
-            """, (product_id, metric_name, -days))
+            """, (product_id, campaign_id, metric_name, -days))
 
             data_points = [dict(row) for row in cursor.fetchall()]
 
@@ -754,15 +766,18 @@ class ProductDatabase:
             for product in products_data:
                 product_id = product['product_id']
                 product_title = product['product_title']
+                campaign_id = product.get('campaign_id')
+                campaign_name = product.get('campaign_name')
 
                 # Upsert product
-                ProductDatabase.upsert_product(product_id, product_title)
+                ProductDatabase.upsert_product(product_id, product_title, campaign_id, campaign_name)
                 products_processed += 1
 
                 # Upsert metrics
                 for metric in product.get('metrics', []):
                     ProductDatabase.upsert_product_metric(
                         product_id=product_id,
+                        campaign_id=campaign_id,
                         date_value=metric['date'],
                         metric_name=metric['name'],
                         value=metric['value'],
