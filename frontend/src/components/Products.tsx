@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import MetricsChart from './MetricsChart';
 
 interface ProductMetric {
@@ -30,7 +30,7 @@ const getUrlParams = () => {
   const params = new URLSearchParams(queryString);
   return {
     campaign: params.get('campaign') || 'all',
-    sortBy: (params.get('sortBy') as 'title' | 'clicks' | 'spend') || 'clicks',
+    sortBy: (params.get('sortBy') as 'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'conversions' | 'conversion_value') || 'clicks',
     sortDirection: (params.get('sortDirection') as 'asc' | 'desc') || 'desc'
   };
 };
@@ -55,9 +55,25 @@ export default function Products() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'title' | 'clicks' | 'spend'>(urlParams.sortBy);
+  const [sortBy, setSortBy] = useState<'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'conversions' | 'conversion_value'>(urlParams.sortBy);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(urlParams.sortDirection);
   const [selectedCampaign, setSelectedCampaign] = useState<string>(urlParams.campaign);
+
+  // Column resizing state
+  const [columnWidths, setColumnWidths] = useState<{ [key: string]: number }>({
+    button: 48,
+    product: 200,
+    campaign: 128,
+    impressions: 96,
+    clicks: 80,
+    ctr: 80,
+    spend: 96,
+    conversions: 80,
+    conversion_value: 96
+  });
+  const [resizingColumn, setResizingColumn] = useState<string | null>(null);
+  const [resizeStartX, setResizeStartX] = useState<number>(0);
+  const [resizeStartWidth, setResizeStartWidth] = useState<number>(0);
 
   useEffect(() => {
     fetchProducts();
@@ -129,7 +145,7 @@ export default function Products() {
     return sortDirection === 'asc' ? comparison : -comparison;
   });
 
-  const handleSort = (column: 'title' | 'clicks' | 'spend') => {
+  const handleSort = (column: 'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'conversions' | 'conversion_value') => {
     let newDirection: 'asc' | 'desc';
     if (sortBy === column) {
       newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
@@ -149,6 +165,41 @@ export default function Products() {
       setExpandedProduct(productId);
     }
   };
+
+  // Column resizing handlers
+  const handleResizeStart = (e: React.MouseEvent, columnName: string) => {
+    e.preventDefault();
+    setResizingColumn(columnName);
+    setResizeStartX(e.clientX);
+    setResizeStartWidth(columnWidths[columnName]);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (resizingColumn) {
+        const diff = e.clientX - resizeStartX;
+        const newWidth = Math.max(50, resizeStartWidth + diff); // Min width of 50px
+        setColumnWidths((prev: { [key: string]: number }) => ({
+          ...prev,
+          [resizingColumn]: newWidth
+        }));
+      }
+    };
+
+    const handleMouseUp = () => {
+      setResizingColumn(null);
+    };
+
+    if (resizingColumn) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingColumn, resizeStartX, resizeStartWidth]);
 
   const formatValue = (value: number, unit: string): string => {
     if (unit === 'USD') {
@@ -195,7 +246,7 @@ export default function Products() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" style={{ cursor: resizingColumn ? 'col-resize' : 'default' }}>
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -232,87 +283,126 @@ export default function Products() {
         </div>
       </div>
 
-      <div className="bg-white shadow-md rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
+      <div className="bg-white shadow-md rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 w-full">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-2 py-2 relative" style={{ width: `${columnWidths.button}px` }}>
+                <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500"
+                     onMouseDown={(e) => handleResizeStart(e, 'button')} />
+              </th>
               <th
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
                 onClick={() => handleSort('title')}
+                style={{ width: `${columnWidths.product}px` }}
               >
                 Product {sortBy === 'title' && (sortDirection === 'asc' ? '↑' : '↓')}
+                <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500"
+                     onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'product'); }} />
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative"
+                  style={{ width: `${columnWidths.campaign}px` }}>
                 Campaign
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Impressions
+                <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500"
+                     onMouseDown={(e) => handleResizeStart(e, 'campaign')} />
               </th>
               <th
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
+                onClick={() => handleSort('impressions')}
+                style={{ width: `${columnWidths.impressions}px` }}
+              >
+                Impr. {sortBy === 'impressions' && (sortDirection === 'asc' ? '↑' : '↓')}
+                <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500"
+                     onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'impressions'); }} />
+              </th>
+              <th
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
                 onClick={() => handleSort('clicks')}
+                style={{ width: `${columnWidths.clicks}px` }}
               >
                 Clicks {sortBy === 'clicks' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                CTR
+                <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500"
+                     onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'clicks'); }} />
               </th>
               <th
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
+                onClick={() => handleSort('ctr')}
+                style={{ width: `${columnWidths.ctr}px` }}
+              >
+                CTR {sortBy === 'ctr' && (sortDirection === 'asc' ? '↑' : '↓')}
+                <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500"
+                     onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'ctr'); }} />
+              </th>
+              <th
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
                 onClick={() => handleSort('spend')}
+                style={{ width: `${columnWidths.spend}px` }}
               >
                 Spend {sortBy === 'spend' && (sortDirection === 'asc' ? '↑' : '↓')}
+                <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500"
+                     onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'spend'); }} />
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Conversions
+              <th
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
+                onClick={() => handleSort('conversions')}
+                style={{ width: `${columnWidths.conversions}px` }}
+              >
+                Conv. {sortBy === 'conversions' && (sortDirection === 'asc' ? '↑' : '↓')}
+                <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500"
+                     onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'conversions'); }} />
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Conv. Value
+              <th
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
+                onClick={() => handleSort('conversion_value')}
+                style={{ width: `${columnWidths.conversion_value}px` }}
+              >
+                Conv. Val. {sortBy === 'conversion_value' && (sortDirection === 'asc' ? '↑' : '↓')}
+                <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500"
+                     onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'conversion_value'); }} />
               </th>
-              <th className="px-6 py-3"></th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {sortedProducts.map((product) => (
               <>
                 <tr key={product.product_id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{product.product_title}</div>
-                    <div className="text-xs text-gray-500">ID: {product.product_id}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{product.campaign_name || 'N/A'}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatValue(getMetricValue(product, 'impressions'), 'count')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatValue(getMetricValue(product, 'clicks'), 'count')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatValue(getMetricValue(product, 'ctr'), '%')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatValue(getMetricValue(product, 'spend'), 'USD')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatValue(getMetricValue(product, 'conversions'), 'count')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatValue(getMetricValue(product, 'conversion_value'), 'USD')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <td className="px-2 py-2 text-center">
                     <button
                       onClick={() => toggleExpand(product.product_id)}
-                      className="text-blue-600 hover:text-blue-900"
+                      className="text-blue-600 hover:text-blue-900 text-xs font-medium"
                     >
-                      {expandedProduct === product.product_id ? 'Hide Charts' : 'View Charts'}
+                      {expandedProduct === product.product_id ? '▼' : '▶'}
                     </button>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="text-sm font-medium text-gray-900 truncate">{product.product_title}</div>
+                    <div className="text-xs text-gray-500 truncate">ID: {product.product_id}</div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="text-sm text-gray-900 truncate">{product.campaign_name || 'N/A'}</div>
+                  </td>
+                  <td className="px-3 py-2 text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'impressions'), 'count')}
+                  </td>
+                  <td className="px-3 py-2 text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'clicks'), 'count')}
+                  </td>
+                  <td className="px-3 py-2 text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'ctr'), '%')}
+                  </td>
+                  <td className="px-3 py-2 text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'spend'), 'USD')}
+                  </td>
+                  <td className="px-3 py-2 text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'conversions'), 'count')}
+                  </td>
+                  <td className="px-3 py-2 text-sm text-gray-900">
+                    {formatValue(getMetricValue(product, 'conversion_value'), 'USD')}
                   </td>
                 </tr>
                 {expandedProduct === product.product_id && (
                   <tr>
-                    <td colSpan={9} className="px-6 py-4 bg-gray-50">
+                    <td colSpan={9} className="px-3 py-4 bg-gray-50">
                       <ProductCharts productId={product.product_id} campaignId={product.campaign_id} productTitle={product.product_title} />
                     </td>
                   </tr>
