@@ -537,37 +537,25 @@ class SettingsDatabase:
 
     @staticmethod
     def set_setting(key: str, value: str, encrypted: bool = False):
-        """Set or update a setting value."""
-        from cryptography.fernet import Fernet
-        from app.config import settings as app_settings
-
-        stored_value = value
-        if encrypted and app_settings.encryption_key:
-            # Encrypt the value before storing
-            cipher = Fernet(app_settings.encryption_key.encode())
-            stored_value = cipher.encrypt(value.encode()).decode()
-
+        """Set or update a setting value (encryption parameter ignored - stored as plain text)."""
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO settings (key, value, encrypted, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, 0, CURRENT_TIMESTAMP)
                 ON CONFLICT(key) DO UPDATE SET
                     value = excluded.value,
-                    encrypted = excluded.encrypted,
+                    encrypted = 0,
                     updated_at = CURRENT_TIMESTAMP
-            """, (key, stored_value, encrypted))
+            """, (key, value))
 
     @staticmethod
     def get_setting(key: str, default: str = None) -> Optional[str]:
-        """Get a setting value."""
-        from cryptography.fernet import Fernet
-        from app.config import settings as app_settings
-
+        """Get a setting value (plain text, no decryption)."""
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT value, encrypted
+                SELECT value
                 FROM settings
                 WHERE key = ?
             """, (key,))
@@ -576,19 +564,7 @@ class SettingsDatabase:
             if not row:
                 return default
 
-            value = row['value']
-            encrypted = row['encrypted']
-
-            if encrypted and app_settings.encryption_key:
-                # Decrypt the value
-                try:
-                    cipher = Fernet(app_settings.encryption_key.encode())
-                    value = cipher.decrypt(value.encode()).decode()
-                except Exception as e:
-                    print(f"Failed to decrypt setting {key}: {e}")
-                    return default
-
-            return value
+            return row['value']
 
     @staticmethod
     def delete_setting(key: str):

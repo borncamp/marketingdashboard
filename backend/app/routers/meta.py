@@ -3,7 +3,7 @@ Meta Ads API endpoints for managing credentials and fetching campaign data.
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from app.database import SettingsDatabase
+from app.database import SettingsDatabase, CampaignDatabase
 from app.auth import verify_credentials
 from typing import Optional, List, Dict, Any
 import requests
@@ -520,20 +520,20 @@ async def get_campaign_adsets(
         )
 
 
-@router.get("/campaigns")
-async def get_meta_campaigns(
+@router.post("/sync")
+async def sync_meta_campaigns(
     days: int = 30,
     username: str = Depends(verify_credentials)
 ):
     """
-    Fetch Meta ad campaigns and their metrics for the last N days.
+    Sync Meta ad campaigns from Meta API to local database.
 
     Args:
         days: Number of days to fetch (default: 30)
         username: Authenticated user (from HTTP Basic Auth)
 
     Returns:
-        List of campaigns with metrics
+        Sync status with counts
     """
     try:
         # Retrieve stored credentials
@@ -623,10 +623,76 @@ async def get_meta_campaigns(
                 "roas": round((conversion_value / total_spend) if total_spend > 0 else 0, 2)
             })
 
+        # Store campaigns and metrics in database
+        campaigns_count = 0
+        metrics_count = 0
+
+        for campaign in campaigns:
+            # Upsert campaign
+            CampaignDatabase.upsert_campaign(
+                campaign_id=campaign['id'],
+                name=campaign['name'],
+                status=campaign['status'],
+                platform='meta'
+            )
+            campaigns_count += 1
+
+            # Get daily insights data
+            campaign_id = campaign['id']
+            insights = campaign.get('insights', {}).get('data', [])
+
+            for insight in insights:
+                date_value = insight.get('date_start')
+                if not date_value:
+                    continue
+
+                # Store each metric
+                metrics_to_store = [
+                    ('spend', float(insight.get('spend', 0)), 'USD'),
+                    ('impressions', int(insight.get('impressions', 0)), 'count'),
+                    ('clicks', int(insight.get('clicks', 0)), 'count'),
+                    ('reach', int(insight.get('reach', 0)), 'count'),
+                ]
+
+                # Calculate CTR
+                impressions = int(insight.get('impressions', 0))
+                clicks = int(insight.get('clicks', 0))
+                ctr = (clicks / impressions * 100) if impressions > 0 else 0
+                metrics_to_store.append(('ctr', ctr, '%'))
+
+                # Store conversions and conversion_value
+                actions = insight.get('actions', [])
+                conversions = 0
+                for action in actions:
+                    if action.get('action_type') in ['purchase', 'offsite_conversion.fb_pixel_purchase']:
+                        conversions += float(action.get('value', 0))
+                metrics_to_store.append(('conversions', conversions, 'count'))
+
+                action_values = insight.get('action_values', [])
+                conversion_value = 0
+                for action_value in action_values:
+                    if action_value.get('action_type') in ['purchase', 'offsite_conversion.fb_pixel_purchase']:
+                        conversion_value += float(action_value.get('value', 0))
+                metrics_to_store.append(('conversion_value', conversion_value, 'USD'))
+
+                for metric_name, value, unit in metrics_to_store:
+                    CampaignDatabase.upsert_metric(
+                        campaign_id=campaign_id,
+                        date_value=date_value,
+                        metric_name=metric_name,
+                        value=value,
+                        unit=unit
+                    )
+                    metrics_count += 1
+
+        # Log successful sync
+        CampaignDatabase.log_sync(campaigns_count, metrics_count, "success")
+
         return {
             "success": True,
-            "campaigns": result,
-            "total_campaigns": len(result)
+            "campaigns_synced": campaigns_count,
+            "metrics_synced": metrics_count,
+            "message": f"Successfully synced {campaigns_count} Meta campaigns with {metrics_count} metrics"
         }
 
     except HTTPException:
@@ -644,5 +710,96 @@ async def get_meta_campaigns(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to fetch Meta campaigns: {str(e)}"
+            detail=f"Failed to sync Meta campaigns: {str(e)}"
+        )
+
+
+@router.get("/campaigns")
+async def get_meta_campaigns(
+    days: int = 30,
+    username: str = Depends(verify_credentials)
+):
+    """
+    Get Meta ad campaigns from local database.
+
+    Args:
+        days: Number of days for metrics (default: 30, currently unused - uses all available data)
+        username: Authenticated user (from HTTP Basic Auth)
+
+    Returns:
+        List of campaigns with metrics from database
+    """
+    try:
+        # Get all Meta campaigns from database
+        all_campaigns = CampaignDatabase.get_all_campaigns()
+
+        # Filter for Meta platform only and transform to Meta Analytics format
+        meta_campaigns = []
+        for campaign in all_campaigns:
+            if campaign.get('platform') != 'meta':
+                continue
+
+            # Extract metrics from array into direct properties
+            metrics_dict = {m['name']: m['value'] for m in campaign.get('metrics', [])}
+
+            transformed = {
+                "id": campaign['id'],
+                "name": campaign['name'],
+                "status": campaign['status'],
+                "objective": "",  # Not stored in database
+                "spend": metrics_dict.get('spend', 0),
+                "impressions": metrics_dict.get('impressions', 0),
+                "clicks": metrics_dict.get('clicks', 0),
+                "reach": metrics_dict.get('reach', 0),
+                "ctr": metrics_dict.get('ctr', 0),
+                "conversions": metrics_dict.get('conversions', 0),
+                "conversion_value": metrics_dict.get('conversion_value', 0),
+                "roas": (metrics_dict.get('conversion_value', 0) / metrics_dict.get('spend', 1)) if metrics_dict.get('spend', 0) > 0 else 0
+            }
+            meta_campaigns.append(transformed)
+
+        return {
+            "success": True,
+            "campaigns": meta_campaigns,
+            "total_campaigns": len(meta_campaigns)
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch Meta campaigns from database: {str(e)}"
+        )
+
+
+@router.get("/sync/status")
+async def get_sync_status(
+    username: str = Depends(verify_credentials)
+):
+    """
+    Get the last sync status for Meta campaigns.
+
+    Returns:
+        Last sync timestamp and counts
+    """
+    try:
+        last_sync = CampaignDatabase.get_last_sync()
+
+        if not last_sync:
+            return {
+                "synced": False,
+                "message": "No sync has been performed yet"
+            }
+
+        return {
+            "synced": True,
+            "last_sync_at": last_sync['synced_at'],
+            "campaigns_count": last_sync['campaigns_count'],
+            "metrics_count": last_sync['metrics_count'],
+            "status": last_sync['status']
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get sync status: {str(e)}"
         )

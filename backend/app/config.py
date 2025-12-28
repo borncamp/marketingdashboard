@@ -31,9 +31,6 @@ class Settings(BaseSettings):
     # Security - Optional API key for sync endpoint
     sync_api_key: Optional[str] = None
 
-    # Encryption key for sensitive data (32-byte Fernet key)
-    encryption_key: Optional[str] = None
-
     # Background Tasks
     shopify_sync_interval_hours: int = 1  # How often to sync Shopify data (default: 1 hour)
 

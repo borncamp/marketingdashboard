@@ -48,10 +48,58 @@ export default function MetaAnalytics() {
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
   const [adSets, setAdSets] = useState<{ [campaignId: string]: MetaAdSet[] }>({});
   const [hideInactive, setHideInactive] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<any>(null);
 
   useEffect(() => {
+    checkSyncStatus();
     fetchCampaigns();
   }, [period]);
+
+  const checkSyncStatus = async () => {
+    try {
+      const response = await fetch('/api/meta/sync/status', {
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSyncStatus(data);
+      }
+    } catch (err) {
+      console.error('Failed to check sync status:', err);
+    }
+  };
+
+  const syncCampaigns = async () => {
+    setSyncing(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/meta/sync?days=${period}`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || 'Failed to sync campaigns');
+      }
+
+      const data = await response.json();
+
+      // Refresh campaigns and sync status after successful sync
+      await fetchCampaigns();
+      await checkSyncStatus();
+
+      alert(`Successfully synced ${data.campaigns_synced} campaigns with ${data.metrics_synced} metrics!`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      alert(`Sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const fetchCampaigns = async () => {
     setLoading(true);
@@ -163,10 +211,36 @@ export default function MetaAnalytics() {
   if (campaigns.length === 0) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Meta Ad Campaigns</h2>
+            <p className="text-gray-600 mt-1">
+              Performance overview of your Meta advertising campaigns
+              {syncStatus?.synced && syncStatus.last_sync_at && (
+                <span className="text-xs ml-2">
+                  • Last synced: {new Date(syncStatus.last_sync_at).toLocaleString()}
+                </span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={syncCampaigns}
+            disabled={syncing}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              syncing
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+          >
+            {syncing ? '⟳ Syncing...' : '↻ Sync from Meta'}
+          </button>
+        </div>
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
           <h3 className="text-lg font-semibold text-yellow-800 mb-2">No Campaigns Found</h3>
           <p className="text-yellow-700 mb-4">
-            No active campaigns found in your Meta ad account. Create some campaigns to see them here!
+            {syncStatus?.synced
+              ? "No campaigns found in database. Your Meta ad account may not have any campaigns yet."
+              : "No campaigns in database yet. Click 'Sync from Meta' above to fetch your campaigns."}
           </p>
         </div>
       </div>
@@ -175,13 +249,31 @@ export default function MetaAnalytics() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Period Toggle */}
+      {/* Period Toggle and Controls */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Meta Ad Campaigns</h2>
-          <p className="text-gray-600 mt-1">Performance overview of your Meta advertising campaigns</p>
+          <p className="text-gray-600 mt-1">
+            Performance overview of your Meta advertising campaigns
+            {syncStatus?.synced && syncStatus.last_sync_at && (
+              <span className="text-xs ml-2">
+                • Last synced: {new Date(syncStatus.last_sync_at).toLocaleString()}
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex items-center space-x-4">
+          <button
+            onClick={syncCampaigns}
+            disabled={syncing}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              syncing
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+          >
+            {syncing ? '⟳ Syncing...' : '↻ Sync from Meta'}
+          </button>
           <div className="flex space-x-2">
             {[7, 14, 30, 90].map((days) => (
               <button

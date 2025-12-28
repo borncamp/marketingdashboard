@@ -5,7 +5,8 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 import httpx
-from app.database import SettingsDatabase, ShopifyDatabase
+import requests
+from app.database import SettingsDatabase, ShopifyDatabase, CampaignDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -151,5 +152,169 @@ class ShopifySyncTask:
         logger.info("Shopify sync background task stopped")
 
 
-# Global instance
+class MetaSyncTask:
+    """Background task to automatically sync Meta Ads data."""
+
+    def __init__(self, interval_minutes: int = 10):
+        """
+        Initialize Meta sync task.
+
+        Args:
+            interval_minutes: How often to sync in minutes (default: 10 minutes)
+        """
+        self.interval_minutes = interval_minutes
+        self.is_running = False
+        self.task = None
+
+    async def sync_meta_data(self):
+        """Sync Meta Ads data using stored credentials."""
+        try:
+            # Load credentials from database
+            access_token = SettingsDatabase.get_setting("meta_access_token")
+            ad_account_id = SettingsDatabase.get_setting("meta_ad_account_id")
+
+            if not access_token or not ad_account_id:
+                logger.info("Meta credentials not configured. Skipping sync.")
+                return
+
+            logger.info(f"Starting Meta sync for ad account: {ad_account_id}")
+
+            # Calculate date range (last 30 days)
+            days = 30
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            date_start = start_date.strftime('%Y-%m-%d')
+            date_end = end_date.strftime('%Y-%m-%d')
+
+            api_version = "v18.0"
+            url = f"https://graph.facebook.com/{api_version}/{ad_account_id}/campaigns"
+
+            # Request campaigns with insights
+            params = {
+                "access_token": access_token,
+                "fields": f"id,name,status,objective,daily_budget,lifetime_budget,insights.time_range({{'since':'{date_start}','until':'{date_end}'}}).time_increment(1){{spend,impressions,clicks,ctr,cpm,cpp,reach,frequency,actions,action_values,cost_per_action_type}}",
+                "limit": 100
+            }
+
+            response = requests.get(url, params=params, timeout=30)
+
+            if response.status_code == 401:
+                logger.error("Invalid Meta access token. Please check credentials.")
+                return
+
+            if not response.ok:
+                error_data = response.json() if response.content else {}
+                error_message = error_data.get('error', {}).get('message', 'Unknown error')
+                logger.error(f"Meta API error: {error_message}")
+                return
+
+            data = response.json()
+            campaigns = data.get('data', [])
+
+            # Store campaigns and metrics in database
+            campaigns_count = 0
+            metrics_count = 0
+
+            for campaign in campaigns:
+                # Upsert campaign
+                CampaignDatabase.upsert_campaign(
+                    campaign_id=campaign['id'],
+                    name=campaign['name'],
+                    status=campaign['status'],
+                    platform='meta'
+                )
+                campaigns_count += 1
+
+                # Get daily insights data
+                campaign_id = campaign['id']
+                insights = campaign.get('insights', {}).get('data', [])
+
+                for insight in insights:
+                    date_value = insight.get('date_start')
+                    if not date_value:
+                        continue
+
+                    # Store each metric
+                    metrics_to_store = [
+                        ('spend', float(insight.get('spend', 0)), 'USD'),
+                        ('impressions', int(insight.get('impressions', 0)), 'count'),
+                        ('clicks', int(insight.get('clicks', 0)), 'count'),
+                        ('reach', int(insight.get('reach', 0)), 'count'),
+                    ]
+
+                    # Calculate CTR
+                    impressions = int(insight.get('impressions', 0))
+                    clicks = int(insight.get('clicks', 0))
+                    ctr = (clicks / impressions * 100) if impressions > 0 else 0
+                    metrics_to_store.append(('ctr', ctr, '%'))
+
+                    # Store conversions and conversion_value
+                    actions = insight.get('actions', [])
+                    conversions = 0
+                    for action in actions:
+                        if action.get('action_type') in ['purchase', 'offsite_conversion.fb_pixel_purchase']:
+                            conversions += float(action.get('value', 0))
+                    metrics_to_store.append(('conversions', conversions, 'count'))
+
+                    action_values = insight.get('action_values', [])
+                    conversion_value = 0
+                    for action_value in action_values:
+                        if action_value.get('action_type') in ['purchase', 'offsite_conversion.fb_pixel_purchase']:
+                            conversion_value += float(action_value.get('value', 0))
+                    metrics_to_store.append(('conversion_value', conversion_value, 'USD'))
+
+                    for metric_name, value, unit in metrics_to_store:
+                        CampaignDatabase.upsert_metric(
+                            campaign_id=campaign_id,
+                            date_value=date_value,
+                            metric_name=metric_name,
+                            value=value,
+                            unit=unit
+                        )
+                        metrics_count += 1
+
+            # Log successful sync
+            CampaignDatabase.log_sync(campaigns_count, metrics_count, "success")
+
+            logger.info(f"✓ Meta sync completed: {campaigns_count} campaigns, {metrics_count} metrics updated")
+
+        except requests.exceptions.Timeout:
+            logger.error("Meta API request timed out")
+        except Exception as e:
+            logger.error(f"Failed to sync Meta data: {str(e)}")
+
+    async def run(self):
+        """Run the sync task periodically."""
+        self.is_running = True
+        logger.info(f"Meta sync task started (interval: {self.interval_minutes} minutes)")
+
+        while self.is_running:
+            try:
+                await self.sync_meta_data()
+            except Exception as e:
+                logger.error(f"Error in Meta sync task: {e}")
+
+            # Wait for the next interval
+            await asyncio.sleep(self.interval_minutes * 60)
+
+    def start(self):
+        """Start the background task."""
+        if self.task is None or self.task.done():
+            self.task = asyncio.create_task(self.run())
+            logger.info("Meta sync background task scheduled")
+
+    async def stop(self):
+        """Stop the background task."""
+        self.is_running = False
+        if self.task:
+            self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
+        logger.info("Meta sync background task stopped")
+
+
+# Global instances
 shopify_sync_task = ShopifySyncTask(interval_hours=1)
+meta_sync_task = MetaSyncTask(interval_minutes=10)

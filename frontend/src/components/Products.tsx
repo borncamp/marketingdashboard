@@ -30,7 +30,7 @@ const getUrlParams = () => {
   const params = new URLSearchParams(queryString);
   return {
     campaign: params.get('campaign') || 'all',
-    sortBy: (params.get('sortBy') as 'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'conversions' | 'conversion_value') || 'clicks',
+    sortBy: (params.get('sortBy') as 'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'cpc' | 'conversions' | 'conversion_value') || 'clicks',
     sortDirection: (params.get('sortDirection') as 'asc' | 'desc') || 'desc'
   };
 };
@@ -55,7 +55,7 @@ export default function Products() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'conversions' | 'conversion_value'>(urlParams.sortBy);
+  const [sortBy, setSortBy] = useState<'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'cpc' | 'conversions' | 'conversion_value'>(urlParams.sortBy);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(urlParams.sortDirection);
   const [selectedCampaign, setSelectedCampaign] = useState<string>(urlParams.campaign);
 
@@ -67,6 +67,7 @@ export default function Products() {
     impressions: 96,
     clicks: 80,
     ctr: 80,
+    cpc: 80,
     spend: 96,
     conversions: 80,
     conversion_value: 96
@@ -119,6 +120,12 @@ export default function Products() {
     return metric ? metric.value : 0;
   };
 
+  const calculateCPC = (product: Product): number => {
+    const clicks = getMetricValue(product, 'clicks');
+    const spend = getMetricValue(product, 'spend');
+    return clicks > 0 ? spend / clicks : 0;
+  };
+
   // Get unique campaigns for filter dropdown
   const campaigns = Array.from(new Set(products.map(p => p.campaign_name).filter(Boolean)))
     .sort();
@@ -136,6 +143,9 @@ export default function Products() {
     if (sortBy === 'title') {
       aValue = a.product_title.toLowerCase();
       bValue = b.product_title.toLowerCase();
+    } else if (sortBy === 'cpc') {
+      aValue = calculateCPC(a);
+      bValue = calculateCPC(b);
     } else {
       aValue = getMetricValue(a, sortBy);
       bValue = getMetricValue(b, sortBy);
@@ -145,7 +155,7 @@ export default function Products() {
     return sortDirection === 'asc' ? comparison : -comparison;
   });
 
-  const handleSort = (column: 'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'conversions' | 'conversion_value') => {
+  const handleSort = (column: 'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'cpc' | 'conversions' | 'conversion_value') => {
     let newDirection: 'asc' | 'desc';
     if (sortBy === column) {
       newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
@@ -335,6 +345,15 @@ export default function Products() {
               </th>
               <th
                 className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
+                onClick={() => handleSort('cpc')}
+                style={{ width: `${columnWidths.cpc}px` }}
+              >
+                CPC {sortBy === 'cpc' && (sortDirection === 'asc' ? '↑' : '↓')}
+                <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500"
+                     onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'cpc'); }} />
+              </th>
+              <th
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
                 onClick={() => handleSort('spend')}
                 style={{ width: `${columnWidths.spend}px` }}
               >
@@ -391,6 +410,9 @@ export default function Products() {
                     {formatValue(getMetricValue(product, 'ctr'), '%')}
                   </td>
                   <td className="px-3 py-2 text-sm text-gray-900">
+                    {formatValue(calculateCPC(product), 'USD')}
+                  </td>
+                  <td className="px-3 py-2 text-sm text-gray-900">
                     {formatValue(getMetricValue(product, 'spend'), 'USD')}
                   </td>
                   <td className="px-3 py-2 text-sm text-gray-900">
@@ -402,7 +424,7 @@ export default function Products() {
                 </tr>
                 {expandedProduct === product.product_id && (
                   <tr>
-                    <td colSpan={9} className="px-3 py-4 bg-gray-50">
+                    <td colSpan={10} className="px-3 py-4 bg-gray-50">
                       <ProductCharts productId={product.product_id} campaignId={product.campaign_id} productTitle={product.product_title} />
                     </td>
                   </tr>

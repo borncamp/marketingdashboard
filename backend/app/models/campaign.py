@@ -8,6 +8,7 @@ class CampaignStatus(str, Enum):
     ENABLED = "ENABLED"
     PAUSED = "PAUSED"
     REMOVED = "REMOVED"
+    ACTIVE = "ACTIVE"  # Meta Ads status
     UNKNOWN = "UNKNOWN"
 
 

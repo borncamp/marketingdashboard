@@ -9,7 +9,7 @@ from app.routers.shopify import router as shopify_router
 from app.routers.shopify_proxy import router as shopify_proxy_router
 from app.routers.products import router as products_router
 from app.routers.meta import router as meta_router
-from app.background_tasks import shopify_sync_task
+from app.background_tasks import shopify_sync_task, meta_sync_task
 
 
 @asynccontextmanager
@@ -18,9 +18,11 @@ async def lifespan(app: FastAPI):
     # Startup: Start background tasks
     shopify_sync_task.interval_hours = settings.shopify_sync_interval_hours
     shopify_sync_task.start()
+    meta_sync_task.start()
     yield
     # Shutdown: Stop background tasks
     await shopify_sync_task.stop()
+    await meta_sync_task.stop()
 
 
 app = FastAPI(
