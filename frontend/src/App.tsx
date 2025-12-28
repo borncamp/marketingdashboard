@@ -30,6 +30,77 @@ function AppContent() {
     setCurrentPage(page);
   };
 
+  // Reusable navigation buttons component
+  const NavigationButtons = () => (
+    <div className="flex items-center space-x-2">
+      <button
+        onClick={() => navigateToPage('dashboard')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+          currentPage === 'dashboard'
+            ? 'bg-blue-100 text-blue-800'
+            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+        }`}
+        title="Google Ads Dashboard"
+      >
+        Google Ads
+      </button>
+      <button
+        onClick={() => window.location.reload()}
+        className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold hover:bg-gray-200 transition-colors"
+        title="Refresh data"
+      >
+        🔄 Refresh
+      </button>
+      <button
+        onClick={() => navigateToPage('products')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+          currentPage === 'products'
+            ? 'bg-purple-100 text-purple-800'
+            : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+        }`}
+        title="Shopping Products"
+      >
+        🏷️ Products
+      </button>
+      <button
+        onClick={() => navigateToPage('meta')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+          currentPage === 'meta'
+            ? 'bg-blue-100 text-blue-800'
+            : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+        }`}
+        title="Meta Ads"
+      >
+        📘 Meta Ads
+      </button>
+      <button
+        onClick={() => navigateToPage('shopify')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+          currentPage === 'shopify'
+            ? 'bg-green-100 text-green-800'
+            : 'bg-green-50 text-green-700 hover:bg-green-100'
+        }`}
+        title="Shopify Integration"
+      >
+        🛍️ Shopify
+      </button>
+      <button
+        onClick={() => navigateToPage('settings')}
+        className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold hover:bg-gray-200 transition-colors"
+        title="Settings"
+      >
+        ⚙️ Settings
+      </button>
+      <button
+        onClick={logout}
+        className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold hover:bg-red-200 transition-colors"
+        title="Logout"
+      >
+        🚪 Logout
+      </button>
+    </div>
+  );
+
   // Listen for hash changes (back/forward buttons)
   useEffect(() => {
     const handleHashChange = () => {
@@ -91,12 +162,7 @@ function AppContent() {
                   Revenue, orders, and shipping metrics from your Shopify store
                 </p>
               </div>
-              <button
-                onClick={() => navigateToPage('dashboard')}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-colors"
-              >
-                ← Back to Dashboard
-              </button>
+              <NavigationButtons />
             </div>
           </div>
         </header>
@@ -120,12 +186,7 @@ function AppContent() {
                   Product-level performance from Google Shopping campaigns
                 </p>
               </div>
-              <button
-                onClick={() => navigateToPage('dashboard')}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-colors"
-              >
-                ← Back to Dashboard
-              </button>
+              <NavigationButtons />
             </div>
           </div>
         </header>
@@ -149,12 +210,7 @@ function AppContent() {
                   Campaign performance from your Meta advertising account
                 </p>
               </div>
-              <button
-                onClick={() => navigateToPage('dashboard')}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-colors"
-              >
-                ← Back to Dashboard
-              </button>
+              <NavigationButtons />
             </div>
           </div>
         </header>
@@ -177,53 +233,7 @@ function AppContent() {
                   Monitor and analyze your advertising campaigns
                 </p>
               </div>
-              <div className="flex items-center space-x-2">
-                <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
-                  Google Ads
-                </span>
-                <button
-                  onClick={() => window.location.reload()}
-                  className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold hover:bg-gray-200 transition-colors"
-                  title="Refresh data"
-                >
-                  🔄 Refresh
-                </button>
-                <button
-                  onClick={() => navigateToPage('products')}
-                  className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold hover:bg-purple-200 transition-colors"
-                  title="Shopping Products"
-                >
-                  🏷️ Products
-                </button>
-                <button
-                  onClick={() => navigateToPage('meta')}
-                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold hover:bg-blue-200 transition-colors"
-                  title="Meta Ads"
-                >
-                  📘 Meta Ads
-                </button>
-                <button
-                  onClick={() => navigateToPage('shopify')}
-                  className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold hover:bg-green-200 transition-colors"
-                  title="Shopify Integration"
-                >
-                  🛍️ Shopify
-                </button>
-                <button
-                  onClick={() => navigateToPage('settings')}
-                  className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold hover:bg-gray-200 transition-colors"
-                  title="Settings"
-                >
-                  ⚙️ Settings
-                </button>
-                <button
-                  onClick={logout}
-                  className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold hover:bg-red-200 transition-colors"
-                  title="Logout"
-                >
-                  🚪 Logout
-                </button>
-              </div>
+              <NavigationButtons />
             </div>
           </div>
         </header>
