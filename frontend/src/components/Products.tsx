@@ -414,20 +414,20 @@ export default function Products() {
                   <td className="px-3 py-2">
                     <div className="text-sm font-medium text-gray-900 truncate">{product.product_title}</div>
                     <div className="text-xs text-gray-500 truncate">
-                      ID: {product.product_id}
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(product.product_id);
                           setCopiedProductId(product.product_id);
                           setTimeout(() => setCopiedProductId(null), 600);
                         }}
-                        className={`ml-1 cursor-pointer text-gray-600 hover:text-gray-800 inline-block ${
+                        className={`mr-1 cursor-pointer text-gray-600 hover:text-gray-800 inline-block ${
                           copiedProductId === product.product_id ? 'animate-ping-once' : ''
                         }`}
                         title="Copy product ID to clipboard"
                       >
                         📋
                       </button>
+                      ID: {product.product_id}
                       {copiedProductId === product.product_id && (
                         <span className="ml-1 text-green-600 text-xs animate-fade-in">✓</span>
                       )}
