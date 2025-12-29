@@ -135,6 +135,10 @@ function fetchCampaignData() {
 
   Logger.log('Fetching campaign list and metrics...');
 
+  // Build metrics list dynamically from CONFIG
+  const metricsToFetch = CONFIG.metrics || ['cost_micros', 'clicks', 'impressions', 'ctr', 'conversions'];
+  const metricsFields = metricsToFetch.map(m => 'metrics.' + m).join(',\n      ');
+
   // First query: Get all campaigns with historical data
   const historicalQuery = `
     SELECT
@@ -142,11 +146,7 @@ function fetchCampaignData() {
       campaign.name,
       campaign.status,
       segments.date,
-      metrics.cost_micros,
-      metrics.clicks,
-      metrics.impressions,
-      metrics.ctr,
-      metrics.conversions
+      ${metricsFields}
     FROM campaign
     WHERE campaign.status != REMOVED
       AND segments.date DURING ${dateRange}
@@ -175,81 +175,55 @@ function fetchCampaignData() {
       Logger.log('  - ' + campaignName + ' (' + campaignStatus + ')');
     }
 
-    // Parse metrics
-    const costMicros = parseInt(row['metrics.cost_micros']) || 0;
-    const costDollars = costMicros / 1000000;
-    const clicks = parseInt(row['metrics.clicks']) || 0;
-    const impressions = parseInt(row['metrics.impressions']) || 0;
-    const ctr = parseFloat(row['metrics.ctr']) || 0;
-    const conversions = parseFloat(row['metrics.conversions']) || 0;
-
-    // Add metrics
-    campaigns[campaignId].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
-    campaigns[campaignId].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
-    campaigns[campaignId].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
-    campaigns[campaignId].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
-    campaigns[campaignId].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
+    // Parse metrics dynamically
+    parseAndAddMetrics(row, date, campaigns[campaignId].metrics);
   }
 
   // Second query: Get TODAY's data for real-time updates
-  try {
-    const todayQuery = `
-      SELECT
-        campaign.id,
-        campaign.name,
-        campaign.status,
-        segments.date,
-        metrics.cost_micros,
-        metrics.clicks,
-        metrics.impressions,
-        metrics.ctr,
-        metrics.conversions
-      FROM campaign
-      WHERE campaign.status != REMOVED
-        AND segments.date DURING TODAY
-      ORDER BY campaign.id, segments.date ASC
-    `;
+  if (CONFIG.query_settings && CONFIG.query_settings.include_today) {
+    try {
+      const todayQuery = `
+        SELECT
+          campaign.id,
+          campaign.name,
+          campaign.status,
+          segments.date,
+          ${metricsFields}
+        FROM campaign
+        WHERE campaign.status != REMOVED
+          AND segments.date DURING TODAY
+        ORDER BY campaign.id, segments.date ASC
+      `;
 
-    const todayReport = AdsApp.report(todayQuery);
-    const todayRows = todayReport.rows();
+      const todayReport = AdsApp.report(todayQuery);
+      const todayRows = todayReport.rows();
 
-    while (todayRows.hasNext()) {
-      const row = todayRows.next();
-      const campaignId = row['campaign.id'];
-      const campaignName = row['campaign.name'];
-      const campaignStatus = row['campaign.status'];
-      const date = row['segments.date'];
+      while (todayRows.hasNext()) {
+        const row = todayRows.next();
+        const campaignId = row['campaign.id'];
+        const campaignName = row['campaign.name'];
+        const campaignStatus = row['campaign.status'];
+        const date = row['segments.date'];
 
-      // Initialize campaign if not exists (in case it's a new campaign today)
-      if (!campaigns[campaignId]) {
-        campaigns[campaignId] = {
-          id: campaignId,
-          name: campaignName,
-          status: campaignStatus,
-          platform: 'google_ads',
-          metrics: []
-        };
+        // Initialize campaign if not exists (in case it's a new campaign today)
+        if (!campaigns[campaignId]) {
+          campaigns[campaignId] = {
+            id: campaignId,
+            name: campaignName,
+            status: campaignStatus,
+            platform: 'google_ads',
+            metrics: []
+          };
+        }
+
+        // Parse metrics dynamically
+        parseAndAddMetrics(row, date, campaigns[campaignId].metrics);
       }
 
-      // Parse metrics
-      const costMicros = parseInt(row['metrics.cost_micros']) || 0;
-      const costDollars = costMicros / 1000000;
-      const clicks = parseInt(row['metrics.clicks']) || 0;
-      const impressions = parseInt(row['metrics.impressions']) || 0;
-      const ctr = parseFloat(row['metrics.ctr']) || 0;
-      const conversions = parseFloat(row['metrics.conversions']) || 0;
-
-      // Add today's metrics
-      campaigns[campaignId].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
-      campaigns[campaignId].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
-      campaigns[campaignId].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
-      campaigns[campaignId].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
-      campaigns[campaignId].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
+      Logger.log('✓ Included today\'s real-time data');
+    } catch (e) {
+      Logger.log('Note: No data available for today yet');
     }
-
-    Logger.log('✓ Included today\'s real-time data');
-  } catch (e) {
-    Logger.log('Note: No data available for today yet');
   }
 
   // Convert to array
@@ -260,6 +234,60 @@ function fetchCampaignData() {
     campaigns: campaignArray,
     source: 'google_ads_script'
   };
+}
+
+
+/**
+ * Parse metrics from a row and add to metrics array
+ * Dynamically handles metrics based on CONFIG.metrics
+ */
+function parseAndAddMetrics(row, date, metricsArray) {
+  const metricsConfig = CONFIG.metrics || ['cost_micros', 'clicks', 'impressions', 'ctr', 'conversions'];
+
+  metricsConfig.forEach(function(metricName) {
+    const fieldName = 'metrics.' + metricName;
+    const rawValue = row[fieldName];
+
+    if (rawValue === undefined || rawValue === null) {
+      return;  // Skip if metric not available
+    }
+
+    // Parse value and determine name/unit
+    let value, name, unit;
+
+    if (metricName === 'cost_micros') {
+      value = parseInt(rawValue) / 1000000;
+      name = 'spend';
+      unit = 'USD';
+    } else if (metricName === 'ctr') {
+      value = parseFloat(rawValue) * 100;
+      name = 'ctr';
+      unit = '%';
+    } else if (metricName === 'conversions_value') {
+      value = parseFloat(rawValue);
+      name = 'conversion_value';
+      unit = 'USD';
+    } else if (metricName.includes('micros')) {
+      value = parseInt(rawValue) / 1000000;
+      name = metricName.replace('_micros', '');
+      unit = 'USD';
+    } else if (metricName.includes('rate') || metricName.includes('ctr')) {
+      value = parseFloat(rawValue) * 100;
+      name = metricName;
+      unit = '%';
+    } else {
+      value = parseFloat(rawValue) || parseInt(rawValue) || 0;
+      name = metricName;
+      unit = 'count';
+    }
+
+    metricsArray.push({
+      date: date,
+      name: name,
+      value: value,
+      unit: unit
+    });
+  });
 }
 
 
@@ -302,11 +330,15 @@ function fetchShoppingProductData() {
       const row = pgRows.next();
       rowCount++;
       const campaignId = row['campaign.id'];
+      const adGroupId = row['ad_group.id'];
       const productItemId = row['ad_group_criterion.listing_group.case_value.product_item_id.value'];
 
       if (productItemId && productItemId.trim() !== '') {
         const key = campaignId + '|' + productItemId;
-        enabledProducts[key] = true;
+        enabledProducts[key] = {
+          enabled: true,
+          adGroupId: adGroupId
+        };
       } else {
         nullCount++;
       }
@@ -327,6 +359,10 @@ function fetchShoppingProductData() {
   // Step 2: Get performance data for the date range
   Logger.log('Step 2: Fetching performance metrics...');
 
+  // Build metrics list dynamically from CONFIG
+  const metricsToFetch = CONFIG.metrics || ['cost_micros', 'clicks', 'impressions', 'ctr', 'conversions', 'conversions_value'];
+  const metricsFields = metricsToFetch.map(m => 'metrics.' + m).join(',\n      ');
+
   const performanceQuery = `
     SELECT
       campaign.id,
@@ -335,12 +371,7 @@ function fetchShoppingProductData() {
       segments.product_item_id,
       segments.product_title,
       segments.date,
-      metrics.cost_micros,
-      metrics.clicks,
-      metrics.impressions,
-      metrics.ctr,
-      metrics.conversions,
-      metrics.conversions_value
+      ${metricsFields}
     FROM shopping_performance_view
     WHERE campaign.status = 'ENABLED'
       AND segments.date DURING ${dateRange}
@@ -368,35 +399,23 @@ function fetchShoppingProductData() {
 
     // Initialize product-campaign combination if not exists
     if (!products[productCampaignKey]) {
+      const adGroupId = enabledProducts[productCampaignKey] ? enabledProducts[productCampaignKey].adGroupId : null;
       products[productCampaignKey] = {
         product_id: productId,
         product_title: productTitle,
         campaign_id: campaignId,
         campaign_name: campaignName,
+        ad_group_id: adGroupId,
         metrics: []
       };
     }
 
-    // Parse metrics
-    const costMicros = parseInt(row['metrics.cost_micros']) || 0;
-    const costDollars = costMicros / 1000000;
-    const clicks = parseInt(row['metrics.clicks']) || 0;
-    const impressions = parseInt(row['metrics.impressions']) || 0;
-    const ctr = parseFloat(row['metrics.ctr']) || 0;
-    const conversions = parseFloat(row['metrics.conversions']) || 0;
-    const conversionsValue = parseFloat(row['metrics.conversions_value']) || 0;
-
-    // Add metrics for this date
-    products[productCampaignKey].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
-    products[productCampaignKey].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
-    products[productCampaignKey].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
-    products[productCampaignKey].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
-    products[productCampaignKey].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
-    products[productCampaignKey].metrics.push({ date: date, name: 'conversion_value', value: conversionsValue, unit: 'USD' });
+    // Parse metrics dynamically
+    parseAndAddMetrics(row, date, products[productCampaignKey].metrics);
   }
 
   // Query TODAY's data for real-time updates
-  if (CONFIG.query_settings.include_today) {
+  if (CONFIG.query_settings && CONFIG.query_settings.include_today) {
     try {
       Logger.log('Step 3: Fetching today\'s data...');
 
@@ -408,12 +427,7 @@ function fetchShoppingProductData() {
           segments.product_item_id,
           segments.product_title,
           segments.date,
-          metrics.cost_micros,
-          metrics.clicks,
-          metrics.impressions,
-          metrics.ctr,
-          metrics.conversions,
-          metrics.conversions_value
+          ${metricsFields}
         FROM shopping_performance_view
         WHERE campaign.status = 'ENABLED'
           AND segments.date DURING TODAY
@@ -439,34 +453,22 @@ function fetchShoppingProductData() {
           continue;  // Skip products that are not currently enabled
         }
 
-      // Initialize product-campaign combination if not exists
-      if (!products[productCampaignKey]) {
-        products[productCampaignKey] = {
-          product_id: productId,
-          product_title: productTitle,
-          campaign_id: campaignId,
-          campaign_name: campaignName,
-          metrics: []
-        };
+        // Initialize product-campaign combination if not exists
+        if (!products[productCampaignKey]) {
+          const adGroupId = enabledProducts[productCampaignKey] ? enabledProducts[productCampaignKey].adGroupId : null;
+          products[productCampaignKey] = {
+            product_id: productId,
+            product_title: productTitle,
+            campaign_id: campaignId,
+            campaign_name: campaignName,
+            ad_group_id: adGroupId,
+            metrics: []
+          };
+        }
+
+        // Parse metrics dynamically
+        parseAndAddMetrics(row, date, products[productCampaignKey].metrics);
       }
-
-      // Parse metrics
-      const costMicros = parseInt(row['metrics.cost_micros']) || 0;
-      const costDollars = costMicros / 1000000;
-      const clicks = parseInt(row['metrics.clicks']) || 0;
-      const impressions = parseInt(row['metrics.impressions']) || 0;
-      const ctr = parseFloat(row['metrics.ctr']) || 0;
-      const conversions = parseFloat(row['metrics.conversions']) || 0;
-      const conversionsValue = parseFloat(row['metrics.conversions_value']) || 0;
-
-      // Add today's metrics
-      products[productCampaignKey].metrics.push({ date: date, name: 'spend', value: costDollars, unit: 'USD' });
-      products[productCampaignKey].metrics.push({ date: date, name: 'clicks', value: clicks, unit: 'count' });
-      products[productCampaignKey].metrics.push({ date: date, name: 'impressions', value: impressions, unit: 'count' });
-      products[productCampaignKey].metrics.push({ date: date, name: 'ctr', value: ctr * 100, unit: '%' });
-      products[productCampaignKey].metrics.push({ date: date, name: 'conversions', value: conversions, unit: 'count' });
-      products[productCampaignKey].metrics.push({ date: date, name: 'conversion_value', value: conversionsValue, unit: 'USD' });
-    }
 
       Logger.log('✓ Included today\'s product data');
     } catch (e) {

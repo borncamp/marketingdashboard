@@ -121,6 +121,7 @@ def init_database():
                 product_title TEXT NOT NULL,
                 campaign_id TEXT NOT NULL,
                 campaign_name TEXT,
+                ad_group_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (product_id, campaign_id)
@@ -153,6 +154,14 @@ def init_database():
             CREATE INDEX IF NOT EXISTS idx_product_metrics_metric_name
             ON product_metrics(metric_name)
         """)
+
+        # Migration: Add ad_group_id column to shopping_products if it doesn't exist
+        try:
+            cursor.execute("SELECT ad_group_id FROM shopping_products LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            cursor.execute("ALTER TABLE shopping_products ADD COLUMN ad_group_id TEXT")
+            print("✓ Migration: Added ad_group_id column to shopping_products table")
 
         conn.commit()
 
@@ -605,7 +614,7 @@ class ProductDatabase:
     """Database operations for Shopping product data."""
 
     @staticmethod
-    def upsert_product(product_id: str, product_title: str, campaign_id: str, campaign_name: str = None):
+    def upsert_product(product_id: str, product_title: str, campaign_id: str, campaign_name: str = None, ad_group_id: str = None):
         """Insert or update a product-campaign combination."""
         if not campaign_id:
             raise ValueError("campaign_id is required")
@@ -613,13 +622,14 @@ class ProductDatabase:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO shopping_products (product_id, product_title, campaign_id, campaign_name, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO shopping_products (product_id, product_title, campaign_id, campaign_name, ad_group_id, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(product_id, campaign_id) DO UPDATE SET
                     product_title = excluded.product_title,
                     campaign_name = excluded.campaign_name,
+                    ad_group_id = excluded.ad_group_id,
                     updated_at = CURRENT_TIMESTAMP
-            """, (product_id, product_title, campaign_id, campaign_name))
+            """, (product_id, product_title, campaign_id, campaign_name, ad_group_id))
 
     @staticmethod
     def upsert_product_metric(product_id: str, campaign_id: str, date_value: str, metric_name: str, value: float, unit: str):
@@ -646,6 +656,7 @@ class ProductDatabase:
                     p.product_title,
                     p.campaign_id,
                     p.campaign_name,
+                    p.ad_group_id,
                     p.updated_at
                 FROM shopping_products p
                 ORDER BY p.product_title
@@ -744,9 +755,10 @@ class ProductDatabase:
                 product_title = product['product_title']
                 campaign_id = product.get('campaign_id')
                 campaign_name = product.get('campaign_name')
+                ad_group_id = product.get('ad_group_id')
 
                 # Upsert product
-                ProductDatabase.upsert_product(product_id, product_title, campaign_id, campaign_name)
+                ProductDatabase.upsert_product(product_id, product_title, campaign_id, campaign_name, ad_group_id)
                 products_processed += 1
 
                 # Upsert metrics

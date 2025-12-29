@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import MetricsChart from './MetricsChart';
 
 interface ProductMetric {
@@ -12,6 +12,7 @@ interface Product {
   product_title: string;
   campaign_id: string;
   campaign_name: string;
+  ad_group_id: string | null;
   metrics: ProductMetric[];
   updated_at: string;
 }
@@ -106,6 +107,11 @@ export default function Products() {
       }
 
       const data: ProductsResponse = await response.json();
+      console.log('[Products] Received products:', data.products.length);
+      if (data.products.length > 0) {
+        console.log('[Products] First product ad_group_id:', data.products[0]?.ad_group_id);
+        console.log('[Products] Products with ad_group_id:', data.products.filter(p => p.ad_group_id).length);
+      }
       setProducts(data.products);
       setError(null);
     } catch (err) {
@@ -134,6 +140,11 @@ export default function Products() {
   const filteredProducts = selectedCampaign === 'all'
     ? products
     : products.filter(p => p.campaign_name === selectedCampaign);
+
+  // Calculate total table width
+  const tableWidth = useMemo(() => {
+    return (Object.values(columnWidths) as number[]).reduce((a, b) => a + b, 0);
+  }, [columnWidths]);
 
   // Sort filtered products
   const sortedProducts = [...filteredProducts].sort((a, b) => {
@@ -186,24 +197,24 @@ export default function Products() {
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (resizingColumn) {
-        const diff = e.clientX - resizeStartX;
-        const newWidth = Math.max(50, resizeStartWidth + diff); // Min width of 50px
-        setColumnWidths((prev: { [key: string]: number }) => ({
-          ...prev,
-          [resizingColumn]: newWidth
-        }));
-      }
+      if (!resizingColumn) return;
+
+      const diff = e.clientX - resizeStartX;
+      const newWidth = Math.max(50, resizeStartWidth + diff); // Min width of 50px
+      setColumnWidths((prev: { [key: string]: number }) => ({
+        ...prev,
+        [resizingColumn]: newWidth
+      }));
     };
 
     const handleMouseUp = () => {
-      setResizingColumn(null);
+      if (resizingColumn) {
+        setResizingColumn(null);
+      }
     };
 
-    if (resizingColumn) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
@@ -294,7 +305,13 @@ export default function Products() {
       </div>
 
       <div className="bg-white shadow-md rounded-lg overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200 w-full">
+        <table
+          className="divide-y divide-gray-200"
+          style={{
+            tableLayout: 'fixed',
+            width: `max(${tableWidth}px, 100%)`
+          }}
+        >
           <thead className="bg-gray-50">
             <tr>
               <th className="px-2 py-2 relative" style={{ width: `${columnWidths.button}px` }}>
@@ -395,10 +412,33 @@ export default function Products() {
                   </td>
                   <td className="px-3 py-2">
                     <div className="text-sm font-medium text-gray-900 truncate">{product.product_title}</div>
-                    <div className="text-xs text-gray-500 truncate">ID: {product.product_id}</div>
+                    <div className="text-xs text-gray-500 truncate">
+                      ID: {product.product_id}
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(product.product_id);
+                        }}
+                        className="ml-1 text-gray-600 hover:text-gray-800 cursor-pointer"
+                        title="Copy product ID to clipboard"
+                      >
+                        📋
+                      </button>
+                    </div>
                   </td>
                   <td className="px-3 py-2">
-                    <div className="text-sm text-gray-900 truncate">{product.campaign_name || 'N/A'}</div>
+                    {product.campaign_name ? (
+                      <a
+                        href={`https://ads.google.com/aw/campaigns?campaignId=${product.campaign_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-blue-600 hover:text-blue-800 truncate block"
+                        title="View campaign in Google Ads"
+                      >
+                        {product.campaign_name}
+                      </a>
+                    ) : (
+                      <div className="text-sm text-gray-900 truncate">N/A</div>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-sm text-gray-900">
                     {formatValue(getMetricValue(product, 'impressions'), 'count')}

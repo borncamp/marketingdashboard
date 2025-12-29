@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Campaign } from '../types/campaign';
+import { Campaign, CampaignStatus } from '../types/campaign';
 import { campaignApi } from '../services/api';
 import CampaignCard from './CampaignCard';
 import AllCampaignsChart from './AllCampaignsChart';
@@ -68,7 +68,11 @@ export default function CampaignList() {
     setError(null);
     try {
       const data = await campaignApi.getCampaigns();
-      setCampaigns(data);
+      // Filter to only show ENABLED campaigns
+      const activeCampaigns = data.filter(c =>
+        c.status === CampaignStatus.ENABLED
+      );
+      setCampaigns(activeCampaigns);
     } catch (err) {
       setError('Failed to load campaigns. Please check your API credentials and try again.');
       console.error(err);

@@ -18,8 +18,8 @@ async def get_script_config():
         Configuration object with script settings
     """
     return {
-        "version": "2.1",
-        "last_updated": "2025-12-27",
+        "version": "2.2",
+        "last_updated": "2025-12-28",
 
         # Data collection settings
         "days_of_history": 30,  # For campaign metrics
@@ -30,6 +30,16 @@ async def get_script_config():
             "status": "ENABLED",  # Only pull from ENABLED campaigns
             "require_impressions": True  # Only include products with impressions > 0
         },
+
+        # Product fields to collect
+        "product_fields": [
+            "segments.product_item_id",
+            "segments.product_title",
+            "campaign.id",
+            "campaign.name",
+            "ad_group.id",  # REQUIRED for edit CPC links
+            "segments.date"
+        ],
 
         # Metrics to collect
         "metrics": [
