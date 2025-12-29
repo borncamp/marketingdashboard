@@ -59,6 +59,7 @@ export default function Products() {
   const [sortBy, setSortBy] = useState<'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'cpc' | 'conversions' | 'conversion_value'>(urlParams.sortBy);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(urlParams.sortDirection);
   const [selectedCampaign, setSelectedCampaign] = useState<string>(urlParams.campaign);
+  const [copiedProductId, setCopiedProductId] = useState<string | null>(null);
 
   // Column resizing state
   const [columnWidths, setColumnWidths] = useState<{ [key: string]: number }>({
@@ -417,28 +418,25 @@ export default function Products() {
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(product.product_id);
+                          setCopiedProductId(product.product_id);
+                          setTimeout(() => setCopiedProductId(null), 600);
                         }}
-                        className="ml-1 text-gray-600 hover:text-gray-800 cursor-pointer"
+                        className={`ml-1 cursor-pointer text-gray-600 hover:text-gray-800 inline-block ${
+                          copiedProductId === product.product_id ? 'animate-ping-once' : ''
+                        }`}
                         title="Copy product ID to clipboard"
                       >
                         📋
                       </button>
+                      {copiedProductId === product.product_id && (
+                        <span className="ml-1 text-green-600 text-xs animate-fade-in">✓</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-3 py-2">
-                    {product.campaign_name ? (
-                      <a
-                        href={`https://ads.google.com/aw/campaigns?campaignId=${product.campaign_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-blue-600 hover:text-blue-800 truncate block"
-                        title="View campaign in Google Ads"
-                      >
-                        {product.campaign_name}
-                      </a>
-                    ) : (
-                      <div className="text-sm text-gray-900 truncate">N/A</div>
-                    )}
+                    <div className="text-sm text-gray-900 truncate">
+                      {product.campaign_name || 'N/A'}
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-sm text-gray-900">
                     {formatValue(getMetricValue(product, 'impressions'), 'count')}
@@ -494,7 +492,7 @@ function ProductCharts({ productId, campaignId, productTitle }: ProductChartsPro
 
   const fetchAllTimeSeries = async () => {
     setLoading(true);
-    const metrics = ['clicks', 'spend', 'impressions', 'ctr', 'conversions'];
+    const metrics = ['clicks', 'spend', 'cpc', 'impressions', 'ctr', 'conversions'];
 
     const data: { [key: string]: any } = {};
 
@@ -550,6 +548,13 @@ function ProductCharts({ productId, campaignId, productTitle }: ProductChartsPro
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <h4 className="text-sm font-medium text-gray-700 mb-2">Spend</h4>
             <MetricsChart data={timeSeriesData.spend} color="#ef4444" />
+          </div>
+        )}
+
+        {timeSeriesData.cpc && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">CPC (Cost Per Click)</h4>
+            <MetricsChart data={timeSeriesData.cpc} color="#ec4899" />
           </div>
         )}
 

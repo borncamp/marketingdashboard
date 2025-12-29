@@ -47,9 +47,19 @@ async def get_script_config():
             "clicks",
             "impressions",
             "ctr",
+            "average_cpc",
             "conversions",
             "conversions_value"
         ],
+
+        # Metric metadata for dynamic parsing
+        "metric_metadata": {
+            "average_cpc": {
+                "conversion": "micros_to_usd",  # Divide by 1,000,000
+                "display_name": "cpc",
+                "unit": "USD"
+            }
+        },
 
         # Query settings
         "query_settings": {

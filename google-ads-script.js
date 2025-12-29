@@ -1,6 +1,25 @@
 /**
  * Google Ads Script to export campaign data to Marketing Tracker API
  *
+ * ⚠️  IMPORTANT: DO NOT MODIFY THIS SCRIPT MANUALLY ⚠️
+ *
+ * This script is FULLY CONFIG-DRIVEN. All settings (metrics to fetch, date ranges,
+ * filters, parsing rules) are controlled by the API endpoint /api/script-config.
+ *
+ * To add new metrics or change behavior:
+ * 1. Update backend/app/routers/script_config.py
+ * 2. Add metric to the "metrics" array
+ * 3. If it needs special parsing (micros conversion, renaming, etc.), add it to "metric_metadata"
+ * 4. The script will automatically handle it at runtime - NO SCRIPT CHANGES NEEDED
+ *
+ * Example - Adding a new metric with custom parsing:
+ * In script_config.py, add to metric_metadata:
+ * "new_metric_name": {
+ *   "conversion": "micros_to_usd",  // or "percentage" or omit for raw value
+ *   "display_name": "custom_name",  // how to store it in the database
+ *   "unit": "USD"  // or "%" or "count"
+ * }
+ *
  * SETUP INSTRUCTIONS:
  * 1. Go to your Google Ads account: https://ads.google.com
  * 2. Click Tools & Settings → Bulk Actions → Scripts
@@ -15,8 +34,8 @@
  * so you can change settings without updating the script.
  *
  * This script will:
- * - Fetch all active campaigns
- * - Get metrics for the last 30 days
+ * - Fetch all active campaigns and shopping products
+ * - Get metrics for the configured date range
  * - Push data to your API endpoint
  * - No Google Ads API developer token needed!
  */
@@ -240,9 +259,22 @@ function fetchCampaignData() {
 /**
  * Parse metrics from a row and add to metrics array
  * Dynamically handles metrics based on CONFIG.metrics
+ *
+ * ⚠️  DO NOT ADD HARDCODED METRIC HANDLERS HERE ⚠️
+ *
+ * This function is designed to be config-driven:
+ * 1. First checks CONFIG.metric_metadata for custom parsing rules
+ * 2. Falls back to pattern-based handlers for backwards compatibility
+ * 3. Uses sensible defaults for unknown metrics
+ *
+ * To handle a new metric properly:
+ * - Add it to backend/app/routers/script_config.py in the metric_metadata object
+ * - The function will automatically apply the conversion/naming from config
+ * - NO CHANGES TO THIS FUNCTION ARE NEEDED
  */
 function parseAndAddMetrics(row, date, metricsArray) {
   const metricsConfig = CONFIG.metrics || ['cost_micros', 'clicks', 'impressions', 'ctr', 'conversions'];
+  const metricMetadata = CONFIG.metric_metadata || {};
 
   metricsConfig.forEach(function(metricName) {
     const fieldName = 'metrics.' + metricName;
@@ -255,7 +287,24 @@ function parseAndAddMetrics(row, date, metricsArray) {
     // Parse value and determine name/unit
     let value, name, unit;
 
-    if (metricName === 'cost_micros') {
+    // Check if there's metadata for this metric
+    if (metricMetadata[metricName]) {
+      const metadata = metricMetadata[metricName];
+
+      // Apply conversion based on metadata
+      if (metadata.conversion === 'micros_to_usd') {
+        value = parseInt(rawValue) / 1000000;
+      } else if (metadata.conversion === 'percentage') {
+        value = parseFloat(rawValue) * 100;
+      } else {
+        value = parseFloat(rawValue) || parseInt(rawValue) || 0;
+      }
+
+      name = metadata.display_name || metricName;
+      unit = metadata.unit || 'count';
+    }
+    // Hardcoded handlers for backwards compatibility
+    else if (metricName === 'cost_micros') {
       value = parseInt(rawValue) / 1000000;
       name = 'spend';
       unit = 'USD';
@@ -267,7 +316,9 @@ function parseAndAddMetrics(row, date, metricsArray) {
       value = parseFloat(rawValue);
       name = 'conversion_value';
       unit = 'USD';
-    } else if (metricName.includes('micros')) {
+    }
+    // Pattern-based handlers
+    else if (metricName.includes('micros')) {
       value = parseInt(rawValue) / 1000000;
       name = metricName.replace('_micros', '');
       unit = 'USD';

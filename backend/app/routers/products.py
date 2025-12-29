@@ -39,6 +39,68 @@ async def get_all_products(
         )
 
 
+@router.get("/debug/metrics")
+async def debug_metrics(credentials=Depends(verify_credentials)):
+    """Debug endpoint to check what metrics are in the database."""
+    from app.database import get_db_connection
+
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Get metric summary
+            cursor.execute("""
+                SELECT metric_name, COUNT(*) as count,
+                       MIN(value) as min_val, MAX(value) as max_val,
+                       AVG(value) as avg_val, unit
+                FROM product_metrics
+                GROUP BY metric_name, unit
+                ORDER BY metric_name
+            """)
+
+            metrics_summary = []
+            for row in cursor.fetchall():
+                metrics_summary.append({
+                    "metric_name": row[0],
+                    "count": row[1],
+                    "min": row[2],
+                    "max": row[3],
+                    "avg": row[4],
+                    "unit": row[5]
+                })
+
+            # Get sample CPC data
+            cursor.execute("""
+                SELECT product_id, campaign_id, date, value, unit
+                FROM product_metrics
+                WHERE metric_name = 'cpc'
+                ORDER BY date DESC
+                LIMIT 20
+            """)
+
+            cpc_samples = []
+            for row in cursor.fetchall():
+                cpc_samples.append({
+                    "product_id": row[0],
+                    "campaign_id": row[1],
+                    "date": row[2],
+                    "value": row[3],
+                    "unit": row[4]
+                })
+
+            return {
+                "success": True,
+                "metrics_summary": metrics_summary,
+                "cpc_samples": cpc_samples
+            }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to debug metrics: {str(e)}"
+        )
+
+
 @router.get("/{product_id}/{campaign_id}/metrics/{metric_name}")
 async def get_product_metric_time_series(
     product_id: str,

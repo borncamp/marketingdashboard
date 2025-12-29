@@ -163,6 +163,22 @@ def init_database():
             cursor.execute("ALTER TABLE shopping_products ADD COLUMN ad_group_id TEXT")
             print("✓ Migration: Added ad_group_id column to shopping_products table")
 
+        # Migration: Convert average_cpc to cpc with proper unit and value conversion
+        cursor.execute("SELECT COUNT(*) FROM product_metrics WHERE metric_name = 'average_cpc'")
+        avg_cpc_count = cursor.fetchone()[0]
+
+        if avg_cpc_count > 0:
+            print(f"✓ Migration: Converting {avg_cpc_count} average_cpc records to cpc...")
+            # Update existing average_cpc records: rename to 'cpc', convert from micros to USD, update unit
+            cursor.execute("""
+                UPDATE product_metrics
+                SET metric_name = 'cpc',
+                    value = value / 1000000.0,
+                    unit = 'USD'
+                WHERE metric_name = 'average_cpc'
+            """)
+            print(f"✓ Migration: Converted {avg_cpc_count} average_cpc records to cpc (USD)")
+
         conn.commit()
 
 
@@ -761,7 +777,7 @@ class ProductDatabase:
                 ProductDatabase.upsert_product(product_id, product_title, campaign_id, campaign_name, ad_group_id)
                 products_processed += 1
 
-                # Upsert metrics
+                # Upsert metrics (CPC now comes directly from Google Ads)
                 for metric in product.get('metrics', []):
                     ProductDatabase.upsert_product_metric(
                         product_id=product_id,
