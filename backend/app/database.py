@@ -164,20 +164,25 @@ def init_database():
             print("✓ Migration: Added ad_group_id column to shopping_products table")
 
         # Migration: Convert average_cpc to cpc with proper unit and value conversion
-        cursor.execute("SELECT COUNT(*) FROM product_metrics WHERE metric_name = 'average_cpc'")
-        avg_cpc_count = cursor.fetchone()[0]
+        # This migration should only run once, so we check if any old average_cpc records exist
 
-        if avg_cpc_count > 0:
-            print(f"✓ Migration: Converting {avg_cpc_count} average_cpc records to cpc...")
-            # Update existing average_cpc records: rename to 'cpc', convert from micros to USD, update unit
-            cursor.execute("""
-                UPDATE product_metrics
-                SET metric_name = 'cpc',
-                    value = value / 1000000.0,
-                    unit = 'USD'
-                WHERE metric_name = 'average_cpc'
-            """)
-            print(f"✓ Migration: Converted {avg_cpc_count} average_cpc records to cpc (USD)")
+        # Check product metrics
+        cursor.execute("SELECT COUNT(*) FROM product_metrics WHERE metric_name = 'average_cpc'")
+        product_avg_cpc_count = cursor.fetchone()[0]
+
+        if product_avg_cpc_count > 0:
+            print(f"✓ Migration: Found {product_avg_cpc_count} average_cpc records in products, cleaning up...")
+            cursor.execute("DELETE FROM product_metrics WHERE metric_name = 'average_cpc'")
+            print(f"✓ Migration: Deleted product average_cpc records (will be re-inserted as 'cpc' on next data sync)")
+
+        # Check campaign metrics
+        cursor.execute("SELECT COUNT(*) FROM campaign_metrics WHERE metric_name = 'average_cpc'")
+        campaign_avg_cpc_count = cursor.fetchone()[0]
+
+        if campaign_avg_cpc_count > 0:
+            print(f"✓ Migration: Found {campaign_avg_cpc_count} average_cpc records in campaigns, cleaning up...")
+            cursor.execute("DELETE FROM campaign_metrics WHERE metric_name = 'average_cpc'")
+            print(f"✓ Migration: Deleted campaign average_cpc records (will be re-inserted as 'cpc' on next data sync)")
 
         conn.commit()
 
@@ -421,12 +426,24 @@ class CampaignDatabase:
 
                 # Upsert metrics
                 for metric in campaign.get('metrics', []):
+                    # Convert average_cpc to cpc with proper unit conversion
+                    metric_name = metric['name']
+                    metric_value = float(metric['value'])
+                    metric_unit = metric['unit']
+
+                    if metric_name == 'average_cpc':
+                        # Convert from micros (count) to USD
+                        metric_name = 'cpc'
+                        if metric_unit == 'count':  # Still in micros
+                            metric_value = metric_value / 1000000
+                            metric_unit = 'USD'
+
                     CampaignDatabase.upsert_metric(
                         campaign_id=campaign['id'],
                         date_value=metric['date'],
-                        metric_name=metric['name'],
-                        value=float(metric['value']),
-                        unit=metric['unit']
+                        metric_name=metric_name,
+                        value=metric_value,
+                        unit=metric_unit
                     )
                     metrics_count += 1
 
@@ -777,15 +794,27 @@ class ProductDatabase:
                 ProductDatabase.upsert_product(product_id, product_title, campaign_id, campaign_name, ad_group_id)
                 products_processed += 1
 
-                # Upsert metrics (CPC now comes directly from Google Ads)
+                # Upsert metrics
                 for metric in product.get('metrics', []):
+                    # Convert average_cpc to cpc with proper unit conversion
+                    metric_name = metric['name']
+                    metric_value = float(metric['value'])
+                    metric_unit = metric['unit']
+
+                    if metric_name == 'average_cpc':
+                        # Convert from micros (count) to USD
+                        metric_name = 'cpc'
+                        if metric_unit == 'count':  # Still in micros
+                            metric_value = metric_value / 1000000
+                            metric_unit = 'USD'
+
                     ProductDatabase.upsert_product_metric(
                         product_id=product_id,
                         campaign_id=campaign_id,
                         date_value=metric['date'],
-                        metric_name=metric['name'],
-                        value=metric['value'],
-                        unit=metric['unit']
+                        metric_name=metric_name,
+                        value=metric_value,
+                        unit=metric_unit
                     )
                     metrics_processed += 1
 

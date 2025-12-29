@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Campaign, TimeSeriesData } from '../types/campaign';
 import { campaignApi } from '../services/api';
 import MetricsChart from './MetricsChart';
+import CombinationChart from './CombinationChart';
 
 interface CampaignCardProps {
   campaign: Campaign;
@@ -10,13 +11,22 @@ interface CampaignCardProps {
 }
 
 export default function CampaignCard({ campaign, days, onDaysChange }: CampaignCardProps) {
-  const [selectedMetric, setSelectedMetric] = useState<string>('spend');
+  const [selectedMetric, setSelectedMetric] = useState<string>('combination');
   const [metricsData, setMetricsData] = useState<TimeSeriesData | null>(null);
+  const [combinationData, setCombinationData] = useState<{
+    spend: TimeSeriesData | null;
+    ctr: TimeSeriesData | null;
+    cpc: TimeSeriesData | null;
+  }>({ spend: null, ctr: null, cpc: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadMetricsData(selectedMetric);
+    if (selectedMetric === 'combination') {
+      loadCombinationData();
+    } else {
+      loadMetricsData(selectedMetric);
+    }
   }, [campaign.id, selectedMetric, days]);
 
   const loadMetricsData = async (metricName: string) => {
@@ -27,6 +37,24 @@ export default function CampaignCard({ campaign, days, onDaysChange }: CampaignC
       setMetricsData(data);
     } catch (err) {
       setError('Failed to load metrics data');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadCombinationData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [spendData, ctrData, cpcData] = await Promise.all([
+        campaignApi.getCampaignMetrics(campaign.id, 'spend', days),
+        campaignApi.getCampaignMetrics(campaign.id, 'ctr', days),
+        campaignApi.getCampaignMetrics(campaign.id, 'cpc', days),
+      ]);
+      setCombinationData({ spend: spendData, ctr: ctrData, cpc: cpcData });
+    } catch (err) {
+      setError('Failed to load combination data');
       console.error(err);
     } finally {
       setLoading(false);
@@ -61,7 +89,7 @@ export default function CampaignCard({ campaign, days, onDaysChange }: CampaignC
   const metricColors: Record<string, string> = {
     spend: '#3b82f6',
     ctr: '#10b981',
-    conversions: '#f59e0b',
+    cpc: '#ec4899',
   };
 
   return (
@@ -87,16 +115,16 @@ export default function CampaignCard({ campaign, days, onDaysChange }: CampaignC
           <p className="text-xs text-gray-600 mb-1">CTR (7d avg)</p>
           <p className="text-lg font-bold text-green-600">{getMetricValue('ctr')}</p>
         </div>
-        <div className="text-center p-3 bg-yellow-50 rounded">
-          <p className="text-xs text-gray-600 mb-1">Conversions (7d)</p>
-          <p className="text-lg font-bold text-yellow-600">{getMetricValue('conversions')}</p>
+        <div className="text-center p-3 bg-pink-50 rounded">
+          <p className="text-xs text-gray-600 mb-1">CPC (7d avg)</p>
+          <p className="text-lg font-bold text-pink-600">{getMetricValue('cpc')}</p>
         </div>
       </div>
 
       <div className="mb-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex space-x-2">
-            {['spend', 'ctr', 'conversions'].map((metric) => (
+            {['combination', 'spend', 'cpc', 'ctr'].map((metric) => (
               <button
                 key={metric}
                 onClick={() => setSelectedMetric(metric)}
@@ -140,7 +168,15 @@ export default function CampaignCard({ campaign, days, onDaysChange }: CampaignC
         </div>
       )}
 
-      {!loading && !error && metricsData && (
+      {!loading && !error && selectedMetric === 'combination' && (
+        <CombinationChart
+          spendData={combinationData.spend}
+          ctrData={combinationData.ctr}
+          cpcData={combinationData.cpc}
+        />
+      )}
+
+      {!loading && !error && selectedMetric !== 'combination' && metricsData && (
         <MetricsChart data={metricsData} color={metricColors[selectedMetric]} />
       )}
     </div>
