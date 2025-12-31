@@ -71,7 +71,13 @@ export default function MetricsChart({ data, color = '#3b82f6' }: MetricsChartPr
           margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
         >
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="date" />
+          <XAxis
+            dataKey="date"
+            angle={-45}
+            textAnchor="end"
+            height={80}
+            interval={0}
+          />
           <YAxis tickFormatter={formatYAxis} />
           <Tooltip formatter={formatTooltip} />
           <Legend />
