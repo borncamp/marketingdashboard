@@ -174,6 +174,11 @@ def aggregate_orders_by_date(orders: list) -> list:
     daily_metrics = {}
 
     for order in orders:
+        # Skip refunded, cancelled, or voided orders to avoid negative revenue
+        financial_status = order.get('financial_status', '').lower()
+        if financial_status in ['refunded', 'voided']:
+            continue
+
         order_date = order['created_at'].split('T')[0]
 
         if order_date not in daily_metrics:
@@ -185,10 +190,13 @@ def aggregate_orders_by_date(orders: list) -> list:
                 "order_count": 0,
             }
 
-        # Revenue = subtotal - discounts
+        # Revenue = subtotal - discounts (use total_price for actual revenue)
+        # Use total_price instead of subtotal - discounts to avoid negative values
         subtotal = float(order.get('subtotal_price', 0))
-        discounts = float(order.get('total_discounts', 0))
-        revenue = subtotal - discounts
+        total_price = float(order.get('total_price', 0))
+
+        # Revenue is the product total (excluding shipping)
+        revenue = subtotal
 
         # Shipping Revenue = what customer paid for shipping
         shipping_revenue = sum(
