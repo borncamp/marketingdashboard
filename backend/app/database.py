@@ -590,18 +590,19 @@ class ShopifyDatabase:
         with get_db_connection() as conn:
             cursor = conn.cursor()
 
-            # Get revenue and shipping revenue from daily metrics
+            # Query individual orders directly - no need for pre-aggregated table
             cursor.execute("""
                 SELECT
-                    SUM(revenue) as total_revenue,
-                    SUM(shipping_revenue) as total_shipping_revenue,
-                    SUM(order_count) as total_orders
-                FROM shopify_daily_metrics
-                WHERE date >= date('now', ?)
+                    SUM(subtotal) as total_revenue,
+                    SUM(shipping_charged) as total_shipping_revenue,
+                    SUM(shipping_cost_estimated) as total_shipping_cost_estimated,
+                    COUNT(*) as total_orders
+                FROM shopify_orders
+                WHERE order_date >= date('now', ?)
             """, (f'-{days} days',))
 
             row = cursor.fetchone()
-            if not row:
+            if not row or row['total_revenue'] is None:
                 return {
                     "total_revenue": 0,
                     "total_shipping_revenue": 0,
@@ -609,52 +610,62 @@ class ShopifyDatabase:
                     "total_orders": 0
                 }
 
-            base_metrics = dict(row)
-
-            # Get estimated shipping costs from individual orders (rule-based calculation)
-            cursor.execute("""
-                SELECT
-                    SUM(shipping_cost_estimated) as total_shipping_cost_estimated
-                FROM shopify_orders
-                WHERE order_date >= date('now', ?)
-                AND shipping_cost_estimated IS NOT NULL
-            """, (f'-{days} days',))
-
-            shipping_row = cursor.fetchone()
-            estimated_cost = shipping_row['total_shipping_cost_estimated'] if shipping_row and shipping_row['total_shipping_cost_estimated'] else 0
-
             return {
-                "total_revenue": base_metrics['total_revenue'] or 0,
-                "total_shipping_revenue": base_metrics['total_shipping_revenue'] or 0,
-                "total_shipping_cost": estimated_cost,
-                "total_orders": base_metrics['total_orders'] or 0
+                "total_revenue": row['total_revenue'] or 0,
+                "total_shipping_revenue": row['total_shipping_revenue'] or 0,
+                "total_shipping_cost": row['total_shipping_cost_estimated'] or 0,
+                "total_orders": row['total_orders'] or 0
             }
 
     @staticmethod
     def get_time_series(metric_name: str, days: int = 30) -> List[dict]:
-        """Get time series data for a specific Shopify metric."""
+        """Get time series data for a specific Shopify metric by aggregating orders."""
         with get_db_connection() as conn:
             cursor = conn.cursor()
 
-            # Map metric name to column
-            metric_column_map = {
-                'revenue': 'revenue',
-                'shipping_revenue': 'shipping_revenue',
-                'shipping_cost': 'shipping_cost',
-                'orders': 'order_count'
-            }
+            # Map metric name to aggregation query
+            if metric_name == 'revenue':
+                query = """
+                    SELECT order_date as date, SUM(subtotal) as value
+                    FROM shopify_orders
+                    WHERE order_date >= date('now', ?)
+                    GROUP BY order_date
+                    ORDER BY date ASC
+                """
+            elif metric_name == 'shipping_revenue':
+                query = """
+                    SELECT order_date as date, SUM(shipping_charged) as value
+                    FROM shopify_orders
+                    WHERE order_date >= date('now', ?)
+                    GROUP BY order_date
+                    ORDER BY date ASC
+                """
+            elif metric_name == 'shipping_cost':
+                query = """
+                    SELECT order_date as date, SUM(shipping_cost_estimated) as value
+                    FROM shopify_orders
+                    WHERE order_date >= date('now', ?) AND shipping_cost_estimated IS NOT NULL
+                    GROUP BY order_date
+                    ORDER BY date ASC
+                """
+            elif metric_name == 'orders':
+                query = """
+                    SELECT order_date as date, COUNT(*) as value
+                    FROM shopify_orders
+                    WHERE order_date >= date('now', ?)
+                    GROUP BY order_date
+                    ORDER BY date ASC
+                """
+            else:
+                query = """
+                    SELECT order_date as date, SUM(subtotal) as value
+                    FROM shopify_orders
+                    WHERE order_date >= date('now', ?)
+                    GROUP BY order_date
+                    ORDER BY date ASC
+                """
 
-            column = metric_column_map.get(metric_name, 'revenue')
-
-            cursor.execute(f"""
-                SELECT
-                    date,
-                    {column} as value
-                FROM shopify_daily_metrics
-                WHERE date >= date('now', ?)
-                ORDER BY date ASC
-            """, (f'-{days} days',))
-
+            cursor.execute(query, (f'-{days} days',))
             return [dict(row) for row in cursor.fetchall()]
 
     @staticmethod
