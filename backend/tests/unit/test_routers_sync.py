@@ -71,7 +71,8 @@ class TestSyncRouter:
         assert response.status_code == 200
         data = response.json()
         assert data['campaigns_processed'] == 5
-        assert data['metrics_processed'] == 5
+        # 5 clicks metrics + 1 auto-generated cpc=0 for campaign-0 (which has 0 clicks)
+        assert data['metrics_processed'] == 6
 
     def test_push_campaign_data_with_api_key(self, client, monkeypatch):
         """Test pushing data with API key authentication."""
@@ -299,3 +300,99 @@ class TestSyncRouter:
             assert row[0] == 'cpc'  # Should be 'cpc' not 'average_cpc'
             assert row[1] == 1.5  # Should be converted from micros
             assert row[2] == 'USD'  # Should be USD not count
+
+    def test_push_campaign_data_zero_clicks_creates_zero_cpc(self, client):
+        """Test that when clicks=0 and no average_cpc, a cpc=0 metric is created."""
+        sync_data = {
+            "campaigns": [
+                {
+                    "id": "test-campaign-zero-clicks",
+                    "name": "Test Campaign",
+                    "status": "ENABLED",
+                    "metrics": [
+                        {
+                            "date": str(date.today()),
+                            "name": "clicks",
+                            "value": 0,
+                            "unit": "count"
+                        },
+                        {
+                            "date": str(date.today()),
+                            "name": "impressions",
+                            "value": 100,
+                            "unit": "count"
+                        },
+                        {
+                            "date": str(date.today()),
+                            "name": "spend",
+                            "value": 0.0,
+                            "unit": "USD"
+                        }
+                    ]
+                }
+            ]
+        }
+
+        response = client.post("/api/sync/push", json=sync_data)
+
+        assert response.status_code == 200
+        data = response.json()
+        # Should have 3 original metrics + 1 auto-generated cpc=0
+        assert data['metrics_processed'] == 4
+
+        # Verify cpc=0 was created
+        from app.database import get_db_connection
+        with get_db_connection() as conn:
+            cursor = conn.execute(
+                "SELECT value, unit FROM campaign_metrics WHERE campaign_id = ? AND metric_name = 'cpc'",
+                ("test-campaign-zero-clicks",)
+            )
+            row = cursor.fetchone()
+
+            assert row is not None
+            assert row[0] == 0.0  # CPC should be 0
+            assert row[1] == 'USD'  # Unit should be USD
+
+    def test_push_campaign_data_with_clicks_no_auto_cpc(self, client):
+        """Test that when clicks>0, no automatic cpc=0 is created."""
+        sync_data = {
+            "campaigns": [
+                {
+                    "id": "test-campaign-with-clicks",
+                    "name": "Test Campaign",
+                    "status": "ENABLED",
+                    "metrics": [
+                        {
+                            "date": str(date.today()),
+                            "name": "clicks",
+                            "value": 10,
+                            "unit": "count"
+                        },
+                        {
+                            "date": str(date.today()),
+                            "name": "spend",
+                            "value": 5.0,
+                            "unit": "USD"
+                        }
+                    ]
+                }
+            ]
+        }
+
+        response = client.post("/api/sync/push", json=sync_data)
+
+        assert response.status_code == 200
+        data = response.json()
+        # Should have exactly 2 metrics, no auto-generated cpc
+        assert data['metrics_processed'] == 2
+
+        # Verify no cpc metric was created
+        from app.database import get_db_connection
+        with get_db_connection() as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM campaign_metrics WHERE campaign_id = ? AND metric_name = 'cpc'",
+                ("test-campaign-with-clicks",)
+            )
+            count = cursor.fetchone()[0]
+
+            assert count == 0  # No CPC metric should exist

@@ -105,16 +105,25 @@ class TestShopifyRouter:
 
     def test_get_shopify_metrics(self, client):
         """Test getting Shopify metrics summary."""
-        # Add some test data
+        from app.database import ShippingDatabase
+        # Add some test data - create 2 orders per day for 7 days
         for i in range(7):
             day = date.today() - timedelta(days=i)
-            ShopifyDatabase.upsert_daily_metrics(
-                str(day),
-                100.0,
-                10.0,
-                5.0,
-                2
-            )
+            for j in range(2):
+                order = {
+                    'id': f'order-{i}-{j}',
+                    'order_number': i * 100 + j,
+                    'order_date': str(day),
+                    'customer_email': f'test{i}{j}@example.com',
+                    'subtotal': 100.0,
+                    'total_price': 110.0,
+                    'shipping_charged': 10.0,
+                    'shipping_cost_estimated': 5.0,
+                    'currency': 'USD',
+                    'financial_status': 'paid',
+                    'fulfillment_status': 'fulfilled'
+                }
+                ShippingDatabase.upsert_order(order)
 
         response = client.get("/api/shopify/metrics?days=7")
 
@@ -124,20 +133,29 @@ class TestShopifyRouter:
         assert 'total_shipping_revenue' in data
         assert 'total_shipping_cost' in data
         assert 'total_orders' in data
-        assert data['total_revenue'] == 700.0
-        assert data['total_shipping_revenue'] == 70.0
+        assert data['total_revenue'] == 1400.0  # 100 * 2 orders * 7 days
+        assert data['total_shipping_revenue'] == 140.0  # 10 * 2 orders * 7 days
+        assert data['total_orders'] == 14  # 2 orders * 7 days
 
     def test_get_shopify_metrics_custom_days(self, client):
         """Test getting metrics with custom day range."""
+        from app.database import ShippingDatabase
         for i in range(30):
             day = date.today() - timedelta(days=i)
-            ShopifyDatabase.upsert_daily_metrics(
-                str(day),
-                50.0,
-                5.0,
-                2.0,
-                1
-            )
+            order = {
+                'id': f'order-{i}',
+                'order_number': i,
+                'order_date': str(day),
+                'customer_email': f'test{i}@example.com',
+                'subtotal': 50.0,
+                'total_price': 55.0,
+                'shipping_charged': 5.0,
+                'shipping_cost_estimated': 2.0,
+                'currency': 'USD',
+                'financial_status': 'paid',
+                'fulfillment_status': 'fulfilled'
+            }
+            ShippingDatabase.upsert_order(order)
 
         response = client.get("/api/shopify/metrics?days=14")
 
@@ -148,17 +166,25 @@ class TestShopifyRouter:
 
     def test_get_shopify_time_series(self, client):
         """Test getting time series data."""
+        from app.database import ShippingDatabase
         for i in range(5):
             day = date.today() - timedelta(days=i)
-            ShopifyDatabase.upsert_daily_metrics(
-                str(day),
-                float(i * 20),
-                float(i * 2),
-                float(i),
-                i
-            )
+            order = {
+                'id': f'order-{i}',
+                'order_number': i,
+                'order_date': str(day),
+                'customer_email': f'test{i}@example.com',
+                'subtotal': float(i * 20),
+                'total_price': float(i * 20),
+                'shipping_charged': float(i * 2),
+                'shipping_cost_estimated': float(i),
+                'currency': 'USD',
+                'financial_status': 'paid',
+                'fulfillment_status': 'fulfilled'
+            }
+            ShippingDatabase.upsert_order(order)
 
-        response = client.get("/api/shopify/metrics/revenue/time-series?days=7")
+        response = client.get("/api/shopify/metrics/revenue?days=7")
 
         assert response.status_code == 200
         data = response.json()
@@ -220,16 +246,18 @@ class TestShopifyRouter:
         assert response.status_code == 200
         data = response.json()
         assert 'order_id' in data
-        assert 'total_cost' in data
+        assert 'calculated_cost' in data
         assert 'breakdown' in data
 
     def test_calculate_all_orders_shipping(self, client, auth_headers, sample_order, sample_order_items, sample_shipping_profile):
         """Test bulk calculating shipping for all orders."""
         # Create multiple orders
+        order_ids = []
         for i in range(3):
             order = sample_order.copy()
             order['id'] = f"order-{i}"
             order['order_number'] = 1000 + i
+            order_ids.append(order['id'])
             ShippingDatabase.upsert_order(order)
             ShippingDatabase.insert_order_items(order['id'], sample_order_items)
 
@@ -238,7 +266,7 @@ class TestShopifyRouter:
 
         response = client.post(
             "/api/shopify/orders/calculate-shipping",
-            json={"limit": 10},
+            json={"order_ids": order_ids},
             headers=auth_headers
         )
 

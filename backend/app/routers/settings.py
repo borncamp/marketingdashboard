@@ -22,11 +22,18 @@ async def get_settings_status():
     Returns:
         SettingsResponse: Current configuration status
     """
-    google_ads_settings = settings_manager.load_google_ads_settings()
+    from app.database import SettingsDatabase
 
-    if google_ads_settings:
+    # Check if Google Ads settings exist in database
+    customer_id = SettingsDatabase.get_setting('google_ads_customer_id')
+    developer_token = SettingsDatabase.get_setting('google_ads_developer_token')
+    client_id = SettingsDatabase.get_setting('google_ads_client_id')
+    client_secret = SettingsDatabase.get_setting('google_ads_client_secret')
+    refresh_token = SettingsDatabase.get_setting('google_ads_refresh_token')
+
+    if all([customer_id, developer_token, client_id, client_secret, refresh_token]):
         # Mask the customer ID for security
-        masked_id = google_ads_settings.customer_id[:3] + "****" + google_ads_settings.customer_id[-3:]
+        masked_id = customer_id[:3] + "****" + customer_id[-3:] if len(customer_id) >= 6 else "***"
 
         return SettingsResponse(
             configured=True,
@@ -51,18 +58,28 @@ async def update_settings(request: SettingsUpdateRequest):
     Returns:
         Success message and validation result
     """
+    from app.database import SettingsDatabase
+
     try:
         # Validate credentials by attempting to initialize adapter
         # We'll create a temporary adapter to test the credentials
         temp_settings = request.google_ads
 
-        # Save the settings
-        settings_manager.save_google_ads_settings(temp_settings)
+        # Save the settings to database
+        SettingsDatabase.set_setting('google_ads_customer_id', temp_settings.customer_id, encrypted=False)
+        SettingsDatabase.set_setting('google_ads_developer_token', temp_settings.developer_token, encrypted=True)
+        SettingsDatabase.set_setting('google_ads_client_id', temp_settings.client_id, encrypted=True)
+        SettingsDatabase.set_setting('google_ads_client_secret', temp_settings.client_secret, encrypted=True)
+        SettingsDatabase.set_setting('google_ads_refresh_token', temp_settings.refresh_token, encrypted=True)
+
+        # Save login_customer_id if provided
+        if temp_settings.login_customer_id:
+            SettingsDatabase.set_setting('google_ads_login_customer_id', temp_settings.login_customer_id, encrypted=False)
 
         return {
             "success": True,
             "message": "Settings saved successfully",
-            "customer_id_masked": temp_settings.customer_id[:3] + "****" + temp_settings.customer_id[-3:]
+            "customer_id_masked": temp_settings.customer_id[:3] + "****" + temp_settings.customer_id[-3:] if len(temp_settings.customer_id) >= 6 else "***"
         }
 
     except Exception as e:
@@ -193,8 +210,17 @@ async def clear_settings():
     Returns:
         Success message
     """
+    from app.database import SettingsDatabase
+
     try:
-        settings_manager.clear_settings()
+        # Delete all Google Ads settings from database
+        SettingsDatabase.delete_setting('google_ads_customer_id')
+        SettingsDatabase.delete_setting('google_ads_developer_token')
+        SettingsDatabase.delete_setting('google_ads_client_id')
+        SettingsDatabase.delete_setting('google_ads_client_secret')
+        SettingsDatabase.delete_setting('google_ads_refresh_token')
+        SettingsDatabase.delete_setting('google_ads_login_customer_id')
+
         return {
             "success": True,
             "message": "Settings cleared successfully"

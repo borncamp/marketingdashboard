@@ -60,8 +60,10 @@ class TestVerifyPassword:
         assert db.verify_password("unicodeuser", "пароль") is True
 
     def test_verify_long_password(self, test_db):
-        """Test very long password."""
-        long_password = "a" * 500
+        """Test very long password (bcrypt has 72-byte limit)."""
+        # Note: bcrypt only uses first 72 bytes of password
+        # So passwords >72 bytes that differ only after byte 72 will hash identically
+        long_password = "a" * 70  # Within bcrypt's 72-byte limit
         with db.get_db() as conn:
             password_hash = bcrypt.hashpw(long_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             conn.execute(

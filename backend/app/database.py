@@ -381,7 +381,8 @@ class CampaignDatabase:
 
             campaign = dict(campaign_row)
 
-            # Get metric data points
+            # Get metric data points for last N days
+            # Use '-(days-1) days' so we get exactly N days: today, yesterday, ..., N-1 days ago
             cursor.execute("""
                 SELECT
                     date,
@@ -391,7 +392,7 @@ class CampaignDatabase:
                 WHERE campaign_id = ? AND metric_name = ?
                     AND date >= date('now', ?)
                 ORDER BY date ASC
-            """, (campaign_id, metric_name, f'-{days} days'))
+            """, (campaign_id, metric_name, f'-{days - 1} days'))
 
             data_points = [dict(row) for row in cursor.fetchall()]
 
@@ -525,28 +526,56 @@ class CampaignDatabase:
                 )
                 campaigns_count += 1
 
-                # Upsert metrics
+                # Group metrics by date for CPC backfilling
+                metrics_by_date = {}
                 for metric in campaign.get('metrics', []):
-                    # Convert average_cpc to cpc with proper unit conversion
-                    metric_name = metric['name']
-                    metric_value = float(metric['value'])
-                    metric_unit = metric['unit']
+                    date_value = metric['date']
+                    if date_value not in metrics_by_date:
+                        metrics_by_date[date_value] = []
+                    metrics_by_date[date_value].append(metric)
 
-                    if metric_name == 'average_cpc':
-                        # Convert from micros (count) to USD
-                        metric_name = 'cpc'
-                        if metric_unit == 'count':  # Still in micros
-                            metric_value = metric_value / 1000000
-                            metric_unit = 'USD'
+                # Process each date's metrics
+                for date_value, date_metrics in metrics_by_date.items():
+                    has_cpc = False
+                    has_clicks = False
+                    clicks_value = 0
 
-                    CampaignDatabase.upsert_metric(
-                        campaign_id=campaign['id'],
-                        date_value=metric['date'],
-                        metric_name=metric_name,
-                        value=metric_value,
-                        unit=metric_unit
-                    )
-                    metrics_count += 1
+                    # First pass: upsert all metrics and check for CPC/clicks
+                    for metric in date_metrics:
+                        metric_name = metric['name']
+                        metric_value = float(metric['value'])
+                        metric_unit = metric['unit']
+
+                        if metric_name == 'average_cpc':
+                            has_cpc = True
+                            # Convert from micros (count) to USD
+                            metric_name = 'cpc'
+                            if metric_unit == 'count':  # Still in micros
+                                metric_value = metric_value / 1000000
+                                metric_unit = 'USD'
+                        elif metric_name == 'clicks':
+                            has_clicks = True
+                            clicks_value = metric_value
+
+                        CampaignDatabase.upsert_metric(
+                            campaign_id=campaign['id'],
+                            date_value=date_value,
+                            metric_name=metric_name,
+                            value=metric_value,
+                            unit=metric_unit
+                        )
+                        metrics_count += 1
+
+                    # If we have clicks=0 but no CPC, add CPC=0
+                    if has_clicks and clicks_value == 0 and not has_cpc:
+                        CampaignDatabase.upsert_metric(
+                            campaign_id=campaign['id'],
+                            date_value=date_value,
+                            metric_name='cpc',
+                            value=0.0,
+                            unit='USD'
+                        )
+                        metrics_count += 1
 
             # Log successful sync
             CampaignDatabase.log_sync(campaigns_count, metrics_count, "success")
@@ -591,6 +620,7 @@ class ShopifyDatabase:
             cursor = conn.cursor()
 
             # Query individual orders directly - no need for pre-aggregated table
+            # Use '-(days-1) days' so we get exactly N days: today, yesterday, ..., N-1 days ago
             cursor.execute("""
                 SELECT
                     SUM(subtotal) as total_revenue,
@@ -599,7 +629,7 @@ class ShopifyDatabase:
                     COUNT(*) as total_orders
                 FROM shopify_orders
                 WHERE order_date >= date('now', ?)
-            """, (f'-{days} days',))
+            """, (f'-{days - 1} days',))
 
             row = cursor.fetchone()
             if not row or row['total_revenue'] is None:
@@ -622,6 +652,9 @@ class ShopifyDatabase:
         """Get time series data for a specific Shopify metric by aggregating orders."""
         with get_db_connection() as conn:
             cursor = conn.cursor()
+
+            # Use '-(days-1) days' so we get exactly N days: today, yesterday, ..., N-1 days ago
+            days_param = f'-{days - 1} days'
 
             # Map metric name to aggregation query
             if metric_name == 'revenue':
@@ -665,7 +698,7 @@ class ShopifyDatabase:
                     ORDER BY date ASC
                 """
 
-            cursor.execute(query, (f'-{days} days',))
+            cursor.execute(query, (days_param,))
             return [dict(row) for row in cursor.fetchall()]
 
     @staticmethod

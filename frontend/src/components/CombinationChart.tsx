@@ -67,10 +67,16 @@ export default function CombinationChart({ spendData, ctrData, cpcData }: Combin
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={chartData}
-          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+          margin={{ top: 5, right: 70, left: 20, bottom: 5 }}
         >
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="date" />
+          <XAxis
+            dataKey="date"
+            angle={-45}
+            textAnchor="end"
+            height={80}
+            interval={0}
+          />
           <YAxis yAxisId="left" />
           <YAxis yAxisId="right" orientation="right" />
           <Tooltip formatter={formatTooltip} />

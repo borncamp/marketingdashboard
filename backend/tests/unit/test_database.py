@@ -390,22 +390,31 @@ class TestShopifyDatabase:
 
     def test_get_metrics_summary(self, test_db):
         """Test getting aggregated metrics summary."""
-        # Add metrics for last 7 days
+        # Add orders for last 7 days using shopify_orders table
         for i in range(7):
             day = date.today() - timedelta(days=i)
-            ShopifyDatabase.upsert_daily_metrics(
-                str(day),
-                100.0,
-                10.0,
-                5.0,
-                2
-            )
+            # Create 2 orders per day
+            for j in range(2):
+                order = {
+                    'id': f'order-{i}-{j}',
+                    'order_number': i * 100 + j,
+                    'order_date': str(day),
+                    'customer_email': f'test{i}{j}@example.com',
+                    'subtotal': 100.0,
+                    'total_price': 110.0,
+                    'shipping_charged': 10.0,
+                    'shipping_cost_estimated': 5.0,
+                    'currency': 'USD',
+                    'financial_status': 'paid',
+                    'fulfillment_status': 'fulfilled'
+                }
+                ShippingDatabase.upsert_order(order)
 
         summary = ShopifyDatabase.get_metrics_summary(days=7)
 
-        assert summary['total_revenue'] == 700.0
-        assert summary['total_shipping_revenue'] == 70.0
-        assert summary['total_orders'] == 14
+        assert summary['total_revenue'] == 1400.0  # 7 days * 2 orders * 100.0
+        assert summary['total_shipping_revenue'] == 140.0  # 7 days * 2 orders * 10.0
+        assert summary['total_orders'] == 14  # 7 days * 2 orders
 
     def test_get_metrics_summary_empty(self, test_db):
         """Test getting summary when no data exists."""
@@ -418,10 +427,23 @@ class TestShopifyDatabase:
 
     def test_get_time_series(self, test_db):
         """Test getting time series for a metric."""
-        # Add data
+        # Add orders using shopify_orders table
         for i in range(5):
             day = date.today() - timedelta(days=i)
-            ShopifyDatabase.upsert_daily_metrics(str(day), float(i * 100), 0, 0, i)
+            order = {
+                'id': f'order-time-{i}',
+                'order_number': 5000 + i,
+                'order_date': str(day),
+                'customer_email': f'time{i}@example.com',
+                'subtotal': float(i * 100),
+                'total_price': float(i * 100),
+                'shipping_charged': 0.0,
+                'shipping_cost_estimated': 0.0,
+                'currency': 'USD',
+                'financial_status': 'paid',
+                'fulfillment_status': 'fulfilled'
+            }
+            ShippingDatabase.upsert_order(order)
 
         result = ShopifyDatabase.get_time_series("revenue", 30)
 

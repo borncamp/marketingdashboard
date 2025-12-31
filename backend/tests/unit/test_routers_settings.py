@@ -126,7 +126,7 @@ class TestSettingsRouter:
         }
 
         response = client.post(
-            "/api/settings/password",
+            "/api/settings/change-password",
             json=password_data,
             headers=auth_headers
         )
@@ -143,7 +143,7 @@ class TestSettingsRouter:
         }
 
         response = client.post(
-            "/api/settings/password",
+            "/api/settings/change-password",
             json=password_data,
             headers=auth_headers
         )
@@ -153,10 +153,10 @@ class TestSettingsRouter:
     def test_get_shopify_settings(self, client, auth_headers):
         """Test getting Shopify settings."""
         # Save Shopify settings
-        SettingsDatabase.set_setting('shopify_shop_url', 'test-shop.myshopify.com')
+        SettingsDatabase.set_setting('shopify_shop_name', 'test-shop')
         SettingsDatabase.set_setting('shopify_access_token', 'test-token')
 
-        response = client.get("/api/settings/shopify", headers=auth_headers)
+        response = client.get("/api/shopify/credentials", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -165,12 +165,12 @@ class TestSettingsRouter:
     def test_update_shopify_settings(self, client, auth_headers):
         """Test updating Shopify settings."""
         shopify_data = {
-            "shop_url": "test-shop.myshopify.com",
+            "shop_name": "test-shop",
             "access_token": "test-access-token"
         }
 
         response = client.post(
-            "/api/settings/shopify",
+            "/api/shopify/credentials",
             json=shopify_data,
             headers=auth_headers
         )
@@ -182,9 +182,9 @@ class TestSettingsRouter:
     def test_delete_shopify_settings(self, client, auth_headers):
         """Test deleting Shopify settings."""
         # First create settings
-        SettingsDatabase.set_setting('shopify_shop_url', 'test-shop.myshopify.com')
+        SettingsDatabase.set_setting('shopify_shop_name', 'test-shop')
 
-        response = client.delete("/api/settings/shopify", headers=auth_headers)
+        response = client.delete("/api/shopify/credentials", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -200,7 +200,10 @@ class TestProductsRouter:
         response = client.get("/api/products", headers=auth_headers)
 
         assert response.status_code == 200
-        assert response.json() == []
+        data = response.json()
+        assert 'products' in data
+        assert data['products'] == []
+        assert data['total_count'] == 0
 
     def test_get_products_with_data(self, client, auth_headers):
         """Test getting products with data."""
@@ -263,5 +266,11 @@ class TestProductsRouter:
 
         assert response.status_code == 200
         data = response.json()
-        assert data['metric_name'] == "spend"
-        assert len(data['data_points']) == 5
+        assert data['success'] is True
+        assert data['product_id'] == "product-123"
+        assert data['campaign_id'] == "campaign-1"
+        assert 'time_series' in data
+        # time_series should have metric data
+        if data['time_series']:
+            assert data['time_series']['metric_name'] == "spend"
+            assert len(data['time_series']['data_points']) == 5
