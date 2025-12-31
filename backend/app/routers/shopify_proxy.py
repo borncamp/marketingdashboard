@@ -7,7 +7,7 @@ from typing import Optional
 from pydantic import BaseModel
 import httpx
 from datetime import datetime, timedelta
-from app.database import SettingsDatabase, ShopifyDatabase
+from app.database import SettingsDatabase, ShopifyDatabase, ShippingDatabase
 from app.auth import verify_credentials
 
 router = APIRouter(prefix="/api/shopify-proxy", tags=["shopify-proxy"])
@@ -138,16 +138,21 @@ async def sync_from_backend(
         data = response.json()
         orders = data.get("orders", [])
 
-        # Aggregate orders by date
+        # Aggregate orders by date for daily metrics (existing functionality)
         daily_metrics = aggregate_orders_by_date(orders)
 
-        # Push to database
+        # Push aggregated metrics to database
         result = ShopifyDatabase.bulk_upsert_from_orders(daily_metrics)
+
+        # NEW: Also store individual orders and line items for shipping calculations
+        orders_data = extract_order_details(orders)
+        orders_result = ShippingDatabase.bulk_upsert_orders(orders_data)
 
         return {
             "success": True,
             "message": f"Successfully synced {len(orders)} orders",
-            "records_processed": result['records_processed']
+            "records_processed": result['records_processed'],
+            "orders_stored": orders_result.get('orders_processed', 0)
         }
 
     except HTTPException:
@@ -200,3 +205,61 @@ def aggregate_orders_by_date(orders: list) -> list:
         daily_metrics[order_date]['order_count'] += 1
 
     return list(daily_metrics.values())
+
+
+def extract_order_details(orders: list) -> list:
+    """
+    Extract individual order details and line items from Shopify orders.
+
+    Args:
+        orders: List of Shopify order objects
+
+    Returns:
+        List of order data dicts ready for database insertion
+    """
+    orders_data = []
+
+    for order in orders:
+        order_date = order['created_at'].split('T')[0]
+
+        # Calculate revenue
+        subtotal = float(order.get('subtotal_price', 0))
+        discounts = float(order.get('total_discounts', 0))
+
+        # Calculate shipping charged to customer
+        shipping_charged = sum(
+            float(line.get('price', 0))
+            for line in order.get('shipping_lines', [])
+        )
+
+        # Extract line items
+        items = []
+        for line_item in order.get('line_items', []):
+            items.append({
+                'product_id': str(line_item.get('product_id', '')),
+                'variant_id': str(line_item.get('variant_id', '')),
+                'product_title': line_item.get('title', ''),
+                'variant_title': line_item.get('variant_title'),
+                'quantity': int(line_item.get('quantity', 1)),
+                'price': float(line_item.get('price', 0)),
+                'total': float(line_item.get('price', 0)) * int(line_item.get('quantity', 1))
+            })
+
+        # Build order data
+        order_data = {
+            'id': str(order['id']),
+            'order_number': int(order.get('order_number', 0)),
+            'order_date': order_date,
+            'customer_email': order.get('email'),
+            'subtotal': subtotal,
+            'total_price': float(order.get('total_price', 0)),
+            'shipping_charged': shipping_charged,
+            'currency': order.get('currency', 'USD'),
+            'financial_status': order.get('financial_status'),
+            'fulfillment_status': order.get('fulfillment_status'),
+            'items': items
+        }
+
+        orders_data.append(order_data)
+
+    return orders_data

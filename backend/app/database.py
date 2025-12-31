@@ -103,6 +103,107 @@ def init_database():
             ON shopify_daily_metrics(date DESC)
         """)
 
+        # Shopify orders table (individual order records)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shopify_orders (
+                id TEXT PRIMARY KEY,
+                order_number INTEGER NOT NULL,
+                order_date DATE NOT NULL,
+                customer_email TEXT,
+                subtotal REAL NOT NULL,
+                total_price REAL NOT NULL,
+                shipping_charged REAL DEFAULT 0,
+                shipping_cost_estimated REAL,
+                currency TEXT DEFAULT 'USD',
+                financial_status TEXT,
+                fulfillment_status TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shopify_orders_date
+            ON shopify_orders(order_date DESC)
+        """)
+
+        # Shopify order items table (line items per order)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shopify_order_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT NOT NULL,
+                product_id TEXT,
+                variant_id TEXT,
+                product_title TEXT NOT NULL,
+                variant_title TEXT,
+                quantity INTEGER NOT NULL,
+                price REAL NOT NULL,
+                total REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (order_id) REFERENCES shopify_orders(id) ON DELETE CASCADE
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shopify_order_items_order
+            ON shopify_order_items(order_id)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shopify_order_items_title
+            ON shopify_order_items(product_title)
+        """)
+
+        # Shipping profiles table (user-defined shipping rules)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shipping_profiles (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                priority INTEGER NOT NULL,
+                is_active BOOLEAN DEFAULT 1,
+                is_default BOOLEAN DEFAULT 0,
+                match_conditions TEXT NOT NULL,
+                cost_rules TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shipping_profiles_priority
+            ON shipping_profiles(priority ASC)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shipping_profiles_active
+            ON shipping_profiles(is_active)
+        """)
+
+        # Order shipping calculations table (audit trail)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS order_shipping_calculations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT NOT NULL,
+                profile_id TEXT,
+                calculated_cost REAL NOT NULL,
+                calculation_details TEXT,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (order_id) REFERENCES shopify_orders(id) ON DELETE CASCADE,
+                FOREIGN KEY (profile_id) REFERENCES shipping_profiles(id) ON DELETE SET NULL
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_order_shipping_calc_order
+            ON order_shipping_calculations(order_id)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_order_shipping_calc_date
+            ON order_shipping_calculations(applied_at DESC)
+        """)
+
         # Settings table for storing configuration (like Shopify credentials)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS settings (
@@ -488,11 +589,12 @@ class ShopifyDatabase:
         """Get aggregated Shopify metrics for the last N days."""
         with get_db_connection() as conn:
             cursor = conn.cursor()
+
+            # Get revenue and shipping revenue from daily metrics
             cursor.execute("""
                 SELECT
                     SUM(revenue) as total_revenue,
                     SUM(shipping_revenue) as total_shipping_revenue,
-                    SUM(shipping_cost) as total_shipping_cost,
                     SUM(order_count) as total_orders
                 FROM shopify_daily_metrics
                 WHERE date >= date('now', ?)
@@ -507,7 +609,26 @@ class ShopifyDatabase:
                     "total_orders": 0
                 }
 
-            return dict(row)
+            base_metrics = dict(row)
+
+            # Get estimated shipping costs from individual orders (rule-based calculation)
+            cursor.execute("""
+                SELECT
+                    SUM(shipping_cost_estimated) as total_shipping_cost_estimated
+                FROM shopify_orders
+                WHERE order_date >= date('now', ?)
+                AND shipping_cost_estimated IS NOT NULL
+            """, (f'-{days} days',))
+
+            shipping_row = cursor.fetchone()
+            estimated_cost = shipping_row['total_shipping_cost_estimated'] if shipping_row and shipping_row['total_shipping_cost_estimated'] else 0
+
+            return {
+                "total_revenue": base_metrics['total_revenue'] or 0,
+                "total_shipping_revenue": base_metrics['total_shipping_revenue'] or 0,
+                "total_shipping_cost": estimated_cost,
+                "total_orders": base_metrics['total_orders'] or 0
+            }
 
     @staticmethod
     def get_time_series(metric_name: str, days: int = 30) -> List[dict]:
@@ -572,6 +693,372 @@ class ShopifyDatabase:
 
         except Exception as e:
             raise Exception(f"Failed to bulk upsert Shopify data: {str(e)}")
+
+
+class ShippingDatabase:
+    """Database operations for shipping rules and order-level data."""
+
+    @staticmethod
+    def upsert_order(order_data: dict):
+        """Insert or update a Shopify order."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO shopify_orders (
+                    id, order_number, order_date, customer_email,
+                    subtotal, total_price, shipping_charged,
+                    currency, financial_status, fulfillment_status,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    order_number = excluded.order_number,
+                    order_date = excluded.order_date,
+                    customer_email = excluded.customer_email,
+                    subtotal = excluded.subtotal,
+                    total_price = excluded.total_price,
+                    shipping_charged = excluded.shipping_charged,
+                    currency = excluded.currency,
+                    financial_status = excluded.financial_status,
+                    fulfillment_status = excluded.fulfillment_status,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (
+                order_data['id'],
+                order_data['order_number'],
+                order_data['order_date'],
+                order_data.get('customer_email'),
+                order_data['subtotal'],
+                order_data['total_price'],
+                order_data.get('shipping_charged', 0),
+                order_data.get('currency', 'USD'),
+                order_data.get('financial_status'),
+                order_data.get('fulfillment_status')
+            ))
+
+    @staticmethod
+    def insert_order_items(order_id: str, items: list):
+        """Bulk insert line items for an order (replaces existing items)."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Delete existing items for this order
+            cursor.execute("DELETE FROM shopify_order_items WHERE order_id = ?", (order_id,))
+
+            # Insert new items
+            for item in items:
+                cursor.execute("""
+                    INSERT INTO shopify_order_items (
+                        order_id, product_id, variant_id,
+                        product_title, variant_title,
+                        quantity, price, total
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    order_id,
+                    item.get('product_id'),
+                    item.get('variant_id'),
+                    item['product_title'],
+                    item.get('variant_title'),
+                    item['quantity'],
+                    item['price'],
+                    item['total']
+                ))
+
+    @staticmethod
+    def get_orders(days: int = 30, status: str = None, limit: int = 100, offset: int = 0) -> list:
+        """Get list of orders with optional filters."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            query = """
+                SELECT
+                    id, order_number, order_date, customer_email,
+                    subtotal, total_price, shipping_charged, shipping_cost_estimated,
+                    currency, financial_status, fulfillment_status
+                FROM shopify_orders
+                WHERE order_date >= date('now', '-' || ? || ' days')
+            """
+            params = [days]
+
+            if status:
+                query += " AND financial_status = ?"
+                params.append(status)
+
+            query += " ORDER BY order_date DESC, order_number DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+            return [
+                {
+                    'id': row[0],
+                    'order_number': row[1],
+                    'order_date': row[2],
+                    'customer_email': row[3],
+                    'subtotal': row[4],
+                    'total_price': row[5],
+                    'shipping_charged': row[6],
+                    'shipping_cost_estimated': row[7],
+                    'currency': row[8],
+                    'financial_status': row[9],
+                    'fulfillment_status': row[10]
+                }
+                for row in rows
+            ]
+
+    @staticmethod
+    def get_order_detail(order_id: str) -> dict:
+        """Get single order with all line items."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Get order
+            cursor.execute("""
+                SELECT
+                    id, order_number, order_date, customer_email,
+                    subtotal, total_price, shipping_charged, shipping_cost_estimated,
+                    currency, financial_status, fulfillment_status
+                FROM shopify_orders
+                WHERE id = ?
+            """, (order_id,))
+
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            order = {
+                'id': row[0],
+                'order_number': row[1],
+                'order_date': row[2],
+                'customer_email': row[3],
+                'subtotal': row[4],
+                'total_price': row[5],
+                'shipping_charged': row[6],
+                'shipping_cost_estimated': row[7],
+                'currency': row[8],
+                'financial_status': row[9],
+                'fulfillment_status': row[10],
+                'items': []
+            }
+
+            # Get line items
+            cursor.execute("""
+                SELECT
+                    product_id, variant_id, product_title, variant_title,
+                    quantity, price, total
+                FROM shopify_order_items
+                WHERE order_id = ?
+            """, (order_id,))
+
+            items = cursor.fetchall()
+            order['items'] = [
+                {
+                    'product_id': item[0],
+                    'variant_id': item[1],
+                    'product_title': item[2],
+                    'variant_title': item[3],
+                    'quantity': item[4],
+                    'price': item[5],
+                    'total': item[6]
+                }
+                for item in items
+            ]
+
+            return order
+
+    @staticmethod
+    def upsert_shipping_profile(profile_data: dict):
+        """Insert or update a shipping rule profile."""
+        import uuid
+        import json
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Generate UUID if not provided
+            profile_id = profile_data.get('id', str(uuid.uuid4()))
+
+            # If setting as default, unset other defaults
+            if profile_data.get('is_default', False):
+                cursor.execute("UPDATE shipping_profiles SET is_default = 0")
+
+            cursor.execute("""
+                INSERT INTO shipping_profiles (
+                    id, name, description, priority, is_active, is_default,
+                    match_conditions, cost_rules, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    description = excluded.description,
+                    priority = excluded.priority,
+                    is_active = excluded.is_active,
+                    is_default = excluded.is_default,
+                    match_conditions = excluded.match_conditions,
+                    cost_rules = excluded.cost_rules,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (
+                profile_id,
+                profile_data['name'],
+                profile_data.get('description'),
+                profile_data['priority'],
+                profile_data.get('is_active', True),
+                profile_data.get('is_default', False),
+                json.dumps(profile_data['match_conditions']),
+                json.dumps(profile_data['cost_rules'])
+            ))
+
+            return profile_id
+
+    @staticmethod
+    def get_shipping_profiles(active_only: bool = False) -> list:
+        """Get all shipping profiles ordered by priority."""
+        import json
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            query = "SELECT id, name, description, priority, is_active, is_default, match_conditions, cost_rules, created_at, updated_at FROM shipping_profiles"
+
+            if active_only:
+                query += " WHERE is_active = 1"
+
+            query += " ORDER BY priority ASC, created_at ASC"
+
+            cursor.execute(query)
+            rows = cursor.fetchall()
+
+            return [
+                {
+                    'id': row[0],
+                    'name': row[1],
+                    'description': row[2],
+                    'priority': row[3],
+                    'is_active': bool(row[4]),
+                    'is_default': bool(row[5]),
+                    'match_conditions': json.loads(row[6]),
+                    'cost_rules': json.loads(row[7]),
+                    'created_at': row[8],
+                    'updated_at': row[9]
+                }
+                for row in rows
+            ]
+
+    @staticmethod
+    def delete_shipping_profile(profile_id: str):
+        """Delete a shipping profile."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM shipping_profiles WHERE id = ?", (profile_id,))
+
+    @staticmethod
+    def save_shipping_calculation(order_id: str, profile_id: str, calculated_cost: float, details: dict):
+        """Save a shipping cost calculation result."""
+        import json
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Save calculation record
+            cursor.execute("""
+                INSERT INTO order_shipping_calculations (
+                    order_id, profile_id, calculated_cost, calculation_details
+                )
+                VALUES (?, ?, ?, ?)
+            """, (
+                order_id,
+                profile_id,
+                calculated_cost,
+                json.dumps(details)
+            ))
+
+            # Update order with estimated cost
+            cursor.execute("""
+                UPDATE shopify_orders
+                SET shipping_cost_estimated = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (calculated_cost, order_id))
+
+    @staticmethod
+    def get_shipping_calculations(order_id: str = None, days: int = 30) -> list:
+        """Get shipping calculation history."""
+        import json
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            query = """
+                SELECT
+                    c.id, c.order_id, c.profile_id, p.name as profile_name,
+                    c.calculated_cost, c.calculation_details, c.applied_at
+                FROM order_shipping_calculations c
+                LEFT JOIN shipping_profiles p ON c.profile_id = p.id
+                WHERE c.applied_at >= date('now', '-' || ? || ' days')
+            """
+            params = [days]
+
+            if order_id:
+                query += " AND c.order_id = ?"
+                params.append(order_id)
+
+            query += " ORDER BY c.applied_at DESC"
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+            return [
+                {
+                    'id': row[0],
+                    'order_id': row[1],
+                    'profile_id': row[2],
+                    'profile_name': row[3],
+                    'calculated_cost': row[4],
+                    'calculation_details': json.loads(row[5]) if row[5] else {},
+                    'applied_at': row[6]
+                }
+                for row in rows
+            ]
+
+    @staticmethod
+    def get_uncalculated_orders(limit: int = 100) -> list:
+        """Get orders that don't have shipping cost estimates yet."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT id
+                FROM shopify_orders
+                WHERE shipping_cost_estimated IS NULL
+                ORDER BY order_date DESC
+                LIMIT ?
+            """, (limit,))
+
+            return [row['id'] for row in cursor.fetchall()]
+
+    @staticmethod
+    def bulk_upsert_orders(orders_data: list):
+        """Bulk insert/update orders and their line items."""
+        count = 0
+
+        try:
+            for order_data in orders_data:
+                # Upsert order
+                ShippingDatabase.upsert_order(order_data)
+
+                # Insert line items if provided
+                if 'items' in order_data:
+                    ShippingDatabase.insert_order_items(order_data['id'], order_data['items'])
+
+                count += 1
+
+            return {
+                'success': True,
+                'orders_processed': count
+            }
+
+        except Exception as e:
+            raise Exception(f"Failed to bulk upsert orders: {str(e)}")
 
 
 class SettingsDatabase:

@@ -65,4 +65,64 @@ export const campaignApi = {
   },
 };
 
+// Shipping Rules API
+export const shippingApi = {
+  async getProfiles(activeOnly: boolean = false): Promise<any[]> {
+    const response = await apiClient.get('/api/shipping/profiles', {
+      params: { active_only: activeOnly }
+    });
+    return response.data;
+  },
+
+  async createProfile(profile: any): Promise<any> {
+    const response = await apiClient.post('/api/shipping/profiles', profile);
+    return response.data;
+  },
+
+  async updateProfile(profileId: string, profile: any): Promise<any> {
+    const response = await apiClient.put(`/api/shipping/profiles/${profileId}`, profile);
+    return response.data;
+  },
+
+  async deleteProfile(profileId: string): Promise<any> {
+    const response = await apiClient.delete(`/api/shipping/profiles/${profileId}`);
+    return response.data;
+  },
+
+  async testProfile(profile: any, testData: any): Promise<any> {
+    const response = await apiClient.post('/api/shipping/profiles/test', {
+      profile,
+      test_data: testData
+    });
+    return response.data;
+  },
+};
+
+// Orders API
+export const ordersApi = {
+  async getOrders(days: number = 30, status?: string, limit: number = 100, offset: number = 0): Promise<any> {
+    const response = await apiClient.get('/api/shopify/orders', {
+      params: { days, status, limit, offset }
+    });
+    return response.data;
+  },
+
+  async getOrderDetail(orderId: string): Promise<any> {
+    const response = await apiClient.get(`/api/shopify/orders/${orderId}`);
+    return response.data;
+  },
+
+  async calculateShipping(orderIds: string[]): Promise<any> {
+    const response = await apiClient.post('/api/shopify/orders/calculate-shipping', {
+      order_ids: orderIds
+    });
+    return response.data;
+  },
+
+  async calculateSingleOrder(orderId: string): Promise<any> {
+    const response = await apiClient.post(`/api/shopify/orders/${orderId}/calculate-shipping`);
+    return response.data;
+  },
+};
+
 export default apiClient;

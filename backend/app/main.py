@@ -7,9 +7,10 @@ from app.routers.settings import router as settings_router
 from app.routers.sync import router as sync_router
 from app.routers.shopify import router as shopify_router
 from app.routers.shopify_proxy import router as shopify_proxy_router
+from app.routers.shipping import router as shipping_router
 from app.routers.products import router as products_router
 from app.routers.meta import router as meta_router
-from app.background_tasks import shopify_sync_task, meta_sync_task
+from app.background_tasks import shopify_sync_task, meta_sync_task, shipping_calculation_task
 
 
 @asynccontextmanager
@@ -19,10 +20,12 @@ async def lifespan(app: FastAPI):
     shopify_sync_task.interval_hours = settings.shopify_sync_interval_hours
     shopify_sync_task.start()
     meta_sync_task.start()
+    shipping_calculation_task.start()
     yield
     # Shutdown: Stop background tasks
     await shopify_sync_task.stop()
     await meta_sync_task.stop()
+    await shipping_calculation_task.stop()
 
 
 app = FastAPI(
@@ -51,6 +54,7 @@ app.include_router(campaigns_router)
 app.include_router(settings_router)
 app.include_router(products_router)
 app.include_router(meta_router)
+app.include_router(shipping_router)
 
 
 @app.get("/")

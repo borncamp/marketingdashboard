@@ -315,6 +315,115 @@ class MetaSyncTask:
         logger.info("Meta sync background task stopped")
 
 
+class ShippingCalculationTask:
+    """Background task to automatically calculate shipping costs for uncalculated orders."""
+
+    def __init__(self, interval_minutes: int = 10):
+        """
+        Initialize shipping calculation task.
+
+        Args:
+            interval_minutes: How often to calculate in minutes (default: 10 minutes)
+        """
+        self.interval_minutes = interval_minutes
+        self.is_running = False
+        self.task = None
+
+    async def calculate_shipping_costs(self):
+        """Calculate shipping costs for orders that don't have estimates yet."""
+        try:
+            # Get uncalculated orders
+            from app.database import ShippingDatabase
+            uncalculated_order_ids = ShippingDatabase.get_uncalculated_orders(limit=100)
+
+            if not uncalculated_order_ids:
+                logger.info("No uncalculated orders found. Skipping shipping calculation.")
+                return
+
+            logger.info(f"Starting shipping calculation for {len(uncalculated_order_ids)} orders")
+
+            # Get active shipping profiles
+            profiles = ShippingDatabase.get_shipping_profiles(active_only=True)
+
+            if not profiles:
+                logger.info("No active shipping profiles configured. Skipping calculation.")
+                return
+
+            # Calculate each order
+            calculated_count = 0
+            for order_id in uncalculated_order_ids:
+                try:
+                    # Get order details
+                    order = ShippingDatabase.get_order_detail(order_id)
+                    if not order:
+                        continue
+
+                    # Import calculation function from shipping router
+                    from app.routers.shipping import calculate_order_shipping_cost
+
+                    # Calculate shipping cost
+                    result = calculate_order_shipping_cost(
+                        order=order,
+                        items=order.get('items', []),
+                        profiles=profiles
+                    )
+
+                    # Save calculation
+                    matched_profile_id = None
+                    if result.get('breakdown'):
+                        matched_profile_id = result['breakdown'][0].get('profile_id')
+
+                    ShippingDatabase.save_shipping_calculation(
+                        order_id=order_id,
+                        profile_id=matched_profile_id,
+                        calculated_cost=result['total_cost'],
+                        details=result
+                    )
+
+                    calculated_count += 1
+
+                except Exception as e:
+                    logger.error(f"Failed to calculate shipping for order {order_id}: {str(e)}")
+                    continue
+
+            logger.info(f"✓ Shipping calculation completed: {calculated_count} orders processed")
+
+        except Exception as e:
+            logger.error(f"Failed to calculate shipping costs: {str(e)}")
+
+    async def run(self):
+        """Run the calculation task periodically."""
+        self.is_running = True
+        logger.info(f"Shipping calculation task started (interval: {self.interval_minutes} minutes)")
+
+        while self.is_running:
+            try:
+                await self.calculate_shipping_costs()
+            except Exception as e:
+                logger.error(f"Error in shipping calculation task: {e}")
+
+            # Wait for the next interval
+            await asyncio.sleep(self.interval_minutes * 60)
+
+    def start(self):
+        """Start the background task."""
+        if self.task is None or self.task.done():
+            self.task = asyncio.create_task(self.run())
+            logger.info("Shipping calculation background task scheduled")
+
+    async def stop(self):
+        """Stop the background task."""
+        self.is_running = False
+        if self.task:
+            self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
+        logger.info("Shipping calculation background task stopped")
+
+
 # Global instances
 shopify_sync_task = ShopifySyncTask(interval_hours=1)
 meta_sync_task = MetaSyncTask(interval_minutes=10)
+shipping_calculation_task = ShippingCalculationTask(interval_minutes=10)

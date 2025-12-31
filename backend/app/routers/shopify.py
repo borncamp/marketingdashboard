@@ -4,9 +4,10 @@ Shopify API endpoints for receiving revenue and order data.
 from fastapi import APIRouter, HTTPException, Header, Depends
 from typing import Optional, List
 from pydantic import BaseModel, Field
-from app.database import ShopifyDatabase, SettingsDatabase
+from app.database import ShopifyDatabase, SettingsDatabase, ShippingDatabase
 from app.config import settings
 from app.auth import verify_credentials
+from app.routers.shipping import calculate_order_shipping_cost
 from datetime import date as DateType
 
 router = APIRouter(prefix="/api/shopify", tags=["shopify"])
@@ -232,4 +233,288 @@ async def delete_shopify_credentials(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete Shopify credentials: {str(e)}"
+        )
+
+
+# ============================================================================
+# Order Management Endpoints
+# ============================================================================
+
+@router.get("/orders")
+async def get_orders(
+    days: int = 30,
+    status: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    username: str = Depends(verify_credentials)
+):
+    """
+    Get list of Shopify orders with optional filters.
+
+    Args:
+        days: Number of days to look back (default: 30)
+        status: Filter by financial status (optional)
+        limit: Maximum number of orders to return (default: 100)
+        offset: Number of orders to skip (default: 0)
+
+    Returns:
+        List of orders with metadata
+    """
+    try:
+        orders = ShippingDatabase.get_orders(
+            days=days,
+            status=status,
+            limit=limit,
+            offset=offset
+        )
+
+        return {
+            "orders": orders,
+            "total": len(orders),
+            "limit": limit,
+            "offset": offset
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch orders: {str(e)}"
+        )
+
+
+@router.get("/orders/{order_id}")
+async def get_order_detail(
+    order_id: str,
+    username: str = Depends(verify_credentials)
+):
+    """
+    Get detailed information for a single order including line items.
+
+    Args:
+        order_id: Shopify order ID
+
+    Returns:
+        Order details with line items
+    """
+    try:
+        order = ShippingDatabase.get_order_detail(order_id)
+
+        if not order:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Order {order_id} not found"
+            )
+
+        return order
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch order detail: {str(e)}"
+        )
+
+
+@router.get("/daily-metrics")
+async def get_daily_metrics(days: int = 30):
+    """
+    Get daily time series metrics for Shopify data.
+
+    Args:
+        days: Number of days to fetch (default: 30)
+
+    Returns:
+        Daily metrics with date, revenue, orders, shipping_revenue
+    """
+    try:
+        # Get daily aggregated data
+        revenue_data = ShopifyDatabase.get_time_series('revenue', days)
+        orders_data = ShopifyDatabase.get_time_series('orders', days)
+        shipping_data = ShopifyDatabase.get_time_series('shipping_revenue', days)
+
+        # Combine into single response
+        daily_metrics = {}
+
+        for point in revenue_data:
+            date = point['date']
+            if date not in daily_metrics:
+                daily_metrics[date] = {'date': date, 'revenue': 0, 'orders': 0, 'shipping_revenue': 0}
+            daily_metrics[date]['revenue'] = point['value']
+
+        for point in orders_data:
+            date = point['date']
+            if date not in daily_metrics:
+                daily_metrics[date] = {'date': date, 'revenue': 0, 'orders': 0, 'shipping_revenue': 0}
+            daily_metrics[date]['orders'] = point['value']
+
+        for point in shipping_data:
+            date = point['date']
+            if date not in daily_metrics:
+                daily_metrics[date] = {'date': date, 'revenue': 0, 'orders': 0, 'shipping_revenue': 0}
+            daily_metrics[date]['shipping_revenue'] = point['value']
+
+        # Sort by date
+        metrics_list = sorted(daily_metrics.values(), key=lambda x: x['date'])
+
+        return {
+            "metrics": metrics_list
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch daily metrics: {str(e)}"
+        )
+
+
+# ============================================================================
+# Shipping Cost Calculation Endpoints
+# ============================================================================
+
+class CalculateShippingRequest(BaseModel):
+    """Request to calculate shipping for specific orders."""
+    order_ids: List[str] = Field(..., description="List of order IDs to calculate")
+
+
+@router.post("/orders/calculate-shipping")
+async def calculate_shipping_costs(
+    request: CalculateShippingRequest,
+    username: str = Depends(verify_credentials)
+):
+    """
+    Calculate shipping costs for multiple orders using active shipping rules.
+
+    Args:
+        request: List of order IDs
+
+    Returns:
+        Results for each order
+    """
+    try:
+        # Get active shipping profiles
+        profiles = ShippingDatabase.get_shipping_profiles(active_only=True)
+
+        if not profiles:
+            raise HTTPException(
+                status_code=400,
+                detail="No active shipping profiles found. Please create shipping rules first."
+            )
+
+        results = []
+
+        for order_id in request.order_ids:
+            # Get order with items
+            order = ShippingDatabase.get_order_detail(order_id)
+
+            if not order:
+                results.append({
+                    "order_id": order_id,
+                    "success": False,
+                    "error": "Order not found"
+                })
+                continue
+
+            # Calculate shipping cost
+            calculation = calculate_order_shipping_cost(
+                order=order,
+                items=order['items'],
+                profiles=profiles
+            )
+
+            # Save calculation to database
+            ShippingDatabase.save_shipping_calculation(
+                order_id=order_id,
+                profile_id=calculation['breakdown'][0]['profile_id'] if calculation['breakdown'] else None,
+                calculated_cost=calculation['total_cost'],
+                details=calculation
+            )
+
+            results.append({
+                "order_id": order_id,
+                "success": True,
+                "calculated_cost": calculation['total_cost'],
+                "breakdown": calculation['breakdown']
+            })
+
+        return {
+            "success": True,
+            "results": results,
+            "orders_processed": len(results)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to calculate shipping costs: {str(e)}"
+        )
+
+
+@router.post("/orders/{order_id}/calculate-shipping")
+async def calculate_single_order_shipping(
+    order_id: str,
+    username: str = Depends(verify_credentials)
+):
+    """
+    Calculate shipping cost for a single order.
+
+    Args:
+        order_id: Shopify order ID
+
+    Returns:
+        Calculation result with breakdown
+    """
+    try:
+        # Get active shipping profiles
+        profiles = ShippingDatabase.get_shipping_profiles(active_only=True)
+
+        if not profiles:
+            raise HTTPException(
+                status_code=400,
+                detail="No active shipping profiles found. Please create shipping rules first."
+            )
+
+        # Get order with items
+        order = ShippingDatabase.get_order_detail(order_id)
+
+        if not order:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Order {order_id} not found"
+            )
+
+        # Calculate shipping cost
+        calculation = calculate_order_shipping_cost(
+            order=order,
+            items=order['items'],
+            profiles=profiles
+        )
+
+        # Save calculation to database
+        ShippingDatabase.save_shipping_calculation(
+            order_id=order_id,
+            profile_id=calculation['breakdown'][0]['profile_id'] if calculation['breakdown'] else None,
+            calculated_cost=calculation['total_cost'],
+            details=calculation
+        )
+
+        return {
+            "success": True,
+            "order_id": order_id,
+            "order_number": order['order_number'],
+            "calculated_cost": calculation['total_cost'],
+            "shipping_charged": order['shipping_charged'],
+            "difference": order['shipping_charged'] - calculation['total_cost'],
+            "breakdown": calculation['breakdown'],
+            "matched_items": calculation['matched_items']
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to calculate shipping cost: {str(e)}"
         )
