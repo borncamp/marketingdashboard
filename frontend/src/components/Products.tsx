@@ -23,24 +23,30 @@ interface ProductsResponse {
   total_count: number;
 }
 
+type TimePeriod = 2 | 7 | 14 | 30;
+
 // Helper functions for URL parameter management
 const getUrlParams = () => {
   // Extract query params from after the hash (e.g., /#products?campaign=foo)
   const hashParts = window.location.hash.split('?');
   const queryString = hashParts.length > 1 ? hashParts[1] : '';
   const params = new URLSearchParams(queryString);
+  const daysParam = params.get('days');
+  const days = daysParam ? parseInt(daysParam, 10) : 30;
   return {
     campaign: params.get('campaign') || 'all',
     sortBy: (params.get('sortBy') as 'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'cpc' | 'conversions' | 'conversion_value') || 'clicks',
-    sortDirection: (params.get('sortDirection') as 'asc' | 'desc') || 'desc'
+    sortDirection: (params.get('sortDirection') as 'asc' | 'desc') || 'desc',
+    days: ([2, 7, 14, 30].includes(days) ? days : 30) as TimePeriod
   };
 };
 
-const updateUrlParams = (campaign: string, sortBy: string, sortDirection: string) => {
+const updateUrlParams = (campaign: string, sortBy: string, sortDirection: string, days: number) => {
   const params = new URLSearchParams();
   if (campaign !== 'all') params.set('campaign', campaign);
   if (sortBy !== 'clicks') params.set('sortBy', sortBy);
   if (sortDirection !== 'desc') params.set('sortDirection', sortDirection);
+  if (days !== 30) params.set('days', days.toString());
 
   // Get the hash without any existing query params (e.g., #products)
   const hashBase = window.location.hash.split('?')[0];
@@ -59,6 +65,7 @@ export default function Products() {
   const [sortBy, setSortBy] = useState<'title' | 'clicks' | 'spend' | 'impressions' | 'ctr' | 'cpc' | 'conversions' | 'conversion_value'>(urlParams.sortBy);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(urlParams.sortDirection);
   const [selectedCampaign, setSelectedCampaign] = useState<string>(urlParams.campaign);
+  const [period, setPeriod] = useState<TimePeriod>(urlParams.days);
   const [copiedProductId, setCopiedProductId] = useState<string | null>(null);
 
   // Column resizing state
@@ -87,11 +94,16 @@ export default function Products() {
       setSelectedCampaign(params.campaign);
       setSortBy(params.sortBy);
       setSortDirection(params.sortDirection);
+      setPeriod(params.days);
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [period]);
 
   const fetchProducts = async () => {
     try {
@@ -101,7 +113,7 @@ export default function Products() {
         headers['Authorization'] = `Basic ${credentials}`;
       }
 
-      const response = await fetch('/api/products/?days=30', { headers });
+      const response = await fetch(`/api/products/?days=${period}`, { headers });
 
       if (!response.ok) {
         throw new Error('Failed to fetch products');
@@ -177,7 +189,7 @@ export default function Products() {
       newDirection = 'desc';
       setSortDirection(newDirection);
     }
-    updateUrlParams(selectedCampaign, sortBy === column ? sortBy : column, newDirection);
+    updateUrlParams(selectedCampaign, sortBy === column ? sortBy : column, newDirection, period);
   };
 
   const toggleExpand = async (productId: string) => {
@@ -274,34 +286,56 @@ export default function Products() {
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Shopping Products Performance</h2>
             <p className="text-gray-600">
-              Showing {sortedProducts.length} of {products.length} products from Google Shopping campaigns (last 30 days)
+              Showing {sortedProducts.length} of {products.length} products from Google Shopping campaigns (last {period} days)
             </p>
           </div>
 
-          {campaigns.length > 0 && (
-            <div className="flex items-center space-x-2">
-              <label htmlFor="campaign-filter" className="text-sm font-medium text-gray-700">
-                Campaign:
-              </label>
-              <select
-                id="campaign-filter"
-                value={selectedCampaign}
-                onChange={(e) => {
-                  const newCampaign = e.target.value;
-                  setSelectedCampaign(newCampaign);
-                  updateUrlParams(newCampaign, sortBy, sortDirection);
-                }}
-                className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="all">All Campaigns</option>
-                {campaigns.map((campaign) => (
-                  <option key={campaign} value={campaign}>
-                    {campaign}
-                  </option>
-                ))}
-              </select>
+          <div className="flex items-center space-x-4">
+            {/* Period Toggle */}
+            <div className="flex space-x-2">
+              {([2, 7, 14, 30] as TimePeriod[]).map((days) => (
+                <button
+                  key={days}
+                  onClick={() => {
+                    setPeriod(days);
+                    updateUrlParams(selectedCampaign, sortBy, sortDirection, days);
+                  }}
+                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                    period === days
+                      ? 'bg-gray-900 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {days}d
+                </button>
+              ))}
             </div>
-          )}
+
+            {campaigns.length > 0 && (
+              <div className="flex items-center space-x-2">
+                <label htmlFor="campaign-filter" className="text-sm font-medium text-gray-700">
+                  Campaign:
+                </label>
+                <select
+                  id="campaign-filter"
+                  value={selectedCampaign}
+                  onChange={(e) => {
+                    const newCampaign = e.target.value;
+                    setSelectedCampaign(newCampaign);
+                    updateUrlParams(newCampaign, sortBy, sortDirection, period);
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="all">All Campaigns</option>
+                  {campaigns.map((campaign) => (
+                    <option key={campaign} value={campaign}>
+                      {campaign}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -463,7 +497,7 @@ export default function Products() {
                 {expandedProduct === product.product_id && (
                   <tr>
                     <td colSpan={10} className="px-3 py-4 bg-gray-50">
-                      <ProductCharts productId={product.product_id} campaignId={product.campaign_id} productTitle={product.product_title} />
+                      <ProductCharts productId={product.product_id} campaignId={product.campaign_id} productTitle={product.product_title} days={period} />
                     </td>
                   </tr>
                 )}
@@ -480,15 +514,16 @@ interface ProductChartsProps {
   productId: string;
   campaignId: string;
   productTitle: string;
+  days: number;
 }
 
-function ProductCharts({ productId, campaignId, productTitle }: ProductChartsProps) {
+function ProductCharts({ productId, campaignId, productTitle, days }: ProductChartsProps) {
   const [timeSeriesData, setTimeSeriesData] = useState<{ [key: string]: any }>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchAllTimeSeries();
-  }, [productId, campaignId]);
+  }, [productId, campaignId, days]);
 
   const fetchAllTimeSeries = async () => {
     setLoading(true);
@@ -505,7 +540,7 @@ function ProductCharts({ productId, campaignId, productTitle }: ProductChartsPro
         }
 
         const response = await fetch(
-          `/api/products/${productId}/${campaignId}/metrics/${metric}?days=30`,
+          `/api/products/${productId}/${campaignId}/metrics/${metric}?days=${days}`,
           { headers }
         );
 

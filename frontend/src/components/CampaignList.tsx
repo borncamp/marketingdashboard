@@ -18,7 +18,7 @@ const getUrlPeriod = (): TimePeriod => {
       return parsed as TimePeriod;
     }
   }
-  return 7;
+  return 30;
 };
 
 const updateUrlPeriod = (days: TimePeriod) => {
@@ -26,7 +26,7 @@ const updateUrlPeriod = (days: TimePeriod) => {
   const hashBase = hashParts[0];
   const params = new URLSearchParams(hashParts.length > 1 ? hashParts[1] : '');
 
-  if (days !== 7) {
+  if (days !== 30) {
     params.set('days', days.toString());
   } else {
     params.delete('days');
