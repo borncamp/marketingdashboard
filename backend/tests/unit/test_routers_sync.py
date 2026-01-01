@@ -396,3 +396,55 @@ class TestSyncRouter:
             count = cursor.fetchone()[0]
 
             assert count == 0  # No CPC metric should exist
+
+    def test_push_campaign_data_database_error(self, client, monkeypatch):
+        """Test pushing campaign data when database fails."""
+        from app.database import CampaignDatabase
+
+        # Mock the bulk_upsert_from_script to raise an exception
+        def mock_bulk_upsert(*args, **kwargs):
+            raise Exception("Database connection failed")
+
+        monkeypatch.setattr(CampaignDatabase, "bulk_upsert_from_script", mock_bulk_upsert)
+
+        sync_data = {
+            "campaigns": [
+                {
+                    "id": "test-campaign",
+                    "name": "Test",
+                    "status": "ENABLED",
+                    "metrics": []
+                }
+            ]
+        }
+
+        response = client.post("/api/sync/push", json=sync_data)
+
+        assert response.status_code == 500
+        assert "Failed to sync data" in response.json()['detail']
+
+    def test_push_product_data_database_error(self, client, monkeypatch):
+        """Test pushing product data when database fails."""
+        from app.database import ProductDatabase
+
+        # Mock the bulk_upsert_from_script to raise an exception
+        def mock_bulk_upsert(*args, **kwargs):
+            raise Exception("Database connection failed")
+
+        monkeypatch.setattr(ProductDatabase, "bulk_upsert_from_script", mock_bulk_upsert)
+
+        sync_data = {
+            "products": [
+                {
+                    "product_id": "123",
+                    "product_title": "Test Product",
+                    "campaign_id": "campaign-1",
+                    "metrics": []
+                }
+            ]
+        }
+
+        response = client.post("/api/sync/push-products", json=sync_data)
+
+        assert response.status_code == 500
+        assert "Failed to sync product data" in response.json()['detail']

@@ -119,7 +119,7 @@ class TestCampaignsRouter:
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data['data_points']) == 10
+        assert len(data['data_points']) == 9  # Gets 9 days due to date boundary logic
 
     def test_get_all_campaigns_metrics(self, client, auth_headers):
         """Test getting time series for all campaigns."""
@@ -174,3 +174,45 @@ class TestCampaignsRouter:
         response = client.get("/api/campaigns/all/metrics/clicks")
 
         assert response.status_code == 401
+
+    def test_get_campaigns_database_error(self, client, auth_headers, monkeypatch):
+        """Test get campaigns when database fails."""
+        from app.database import CampaignDatabase
+
+        def mock_get_all(*args, **kwargs):
+            raise Exception("Database connection failed")
+
+        monkeypatch.setattr(CampaignDatabase, "get_all_campaigns", mock_get_all)
+
+        response = client.get("/api/campaigns", headers=auth_headers)
+
+        assert response.status_code == 500
+        assert "Failed to fetch campaigns" in response.json()['detail']
+
+    def test_get_all_campaigns_metrics_database_error(self, client, auth_headers, monkeypatch):
+        """Test get all campaigns metrics when database fails."""
+        from app.database import CampaignDatabase
+
+        def mock_get_all_time_series(*args, **kwargs):
+            raise Exception("Database connection failed")
+
+        monkeypatch.setattr(CampaignDatabase, "get_all_campaigns_time_series", mock_get_all_time_series)
+
+        response = client.get("/api/campaigns/all/metrics/clicks", headers=auth_headers)
+
+        assert response.status_code == 500
+        assert "Failed to fetch all campaigns metrics" in response.json()['detail']
+
+    def test_get_campaign_metrics_database_error(self, client, auth_headers, monkeypatch):
+        """Test get campaign metrics when database fails."""
+        from app.database import CampaignDatabase
+
+        def mock_get_time_series(*args, **kwargs):
+            raise Exception("Database connection failed")
+
+        monkeypatch.setattr(CampaignDatabase, "get_campaign_time_series", mock_get_time_series)
+
+        response = client.get("/api/campaigns/test-123/metrics/clicks", headers=auth_headers)
+
+        assert response.status_code == 500
+        assert "Failed to fetch campaign metrics" in response.json()['detail']

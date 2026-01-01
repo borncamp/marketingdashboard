@@ -187,6 +187,18 @@ class TestEvaluateMatchConditions:
 
         assert evaluate_match_conditions(conditions, data) is True  # Empty string is in any string
 
+    def test_unknown_operator(self):
+        """Test matching with unknown operator returns False."""
+        conditions = {
+            'field': 'product_title',
+            'operator': 'unknown_operator',
+            'value': 'test',
+            'case_sensitive': False
+        }
+        data = {'product_title': 'Test Product'}
+
+        assert evaluate_match_conditions(conditions, data) is False
+
 
 @pytest.mark.unit
 class TestEvaluateCostRules:
@@ -364,6 +376,50 @@ class TestEvaluateCostRules:
         cost = evaluate_cost_rules(cost_rules, data)
         assert cost == 8.0  # Defaults to fixed type
 
+    def test_conditional_with_exception_in_evaluation(self):
+        """Test conditional that raises exception during evaluation."""
+        cost_rules = {
+            'type': 'conditional',
+            'conditions': [
+                {
+                    'if': 'invalid_variable >= 50',  # This will cause exception
+                    'then': 0
+                },
+                {
+                    'if': 'order_subtotal >= 30',
+                    'then': 5,
+                    'else': 12
+                }
+            ]
+        }
+        data = {'order_subtotal': 40.0}
+
+        # First condition fails with exception, should try second condition
+        cost = evaluate_cost_rules(cost_rules, data)
+        assert cost == 5.0
+
+    def test_conditional_with_exception_in_float_conversion(self):
+        """Test conditional that raises exception when converting 'then' to float."""
+        cost_rules = {
+            'type': 'conditional',
+            'conditions': [
+                {
+                    'if': 'order_subtotal >= 50',
+                    'then': 'not_a_number'  # This will cause float() to raise exception
+                },
+                {
+                    'if': 'order_subtotal >= 30',
+                    'then': 5,
+                    'else': 12
+                }
+            ]
+        }
+        data = {'order_subtotal': 60.0}
+
+        # First condition matches but float conversion fails, should try second condition
+        cost = evaluate_cost_rules(cost_rules, data)
+        assert cost == 5.0
+
 
 @pytest.mark.unit
 class TestEvalSafeExpression:
@@ -428,6 +484,9 @@ class TestEvalSafeExpression:
         assert eval_safe_expression('exec("code")') is False
         assert eval_safe_expression('eval("code")') is False
         assert eval_safe_expression('open("file")') is False
+        assert eval_safe_expression('compile') is False  # Single dangerous keyword
+        # Test with only allowed chars but contains __ (double underscore)
+        assert eval_safe_expression('50 + __ > 30') is False  # __ is dangerous pattern with allowed chars
 
     def test_invalid_syntax(self):
         """Test handling of invalid syntax."""
@@ -858,3 +917,37 @@ class TestCalculateOrderShippingCost:
         assert 'profile_name' in matched_item
         assert matched_item['profile_id'] == 'profile-1'
         assert matched_item['profile_name'] == 'Test Rule'
+
+    def test_calculate_with_no_matching_profile_and_no_default(self):
+        """Test calculation when item matches no profile and there's no default."""
+        order = {'id': 'order-1', 'subtotal': 50.0, 'shipping_charged': 10.0}
+        items = [
+            {'product_title': 'Random Product', 'quantity': 1, 'total': 50.0}
+        ]
+        profiles = [
+            {
+                'id': 'profile-1',
+                'name': 'Specific Rule',
+                'priority': 10,
+                'is_active': True,
+                'is_default': False,
+                'match_conditions': {
+                    'field': 'product_title',
+                    'operator': 'contains',
+                    'value': 'special'
+                },
+                'cost_rules': {
+                    'type': 'fixed',
+                    'base_cost': 10.0
+                }
+            }
+        ]
+
+        result = calculate_order_shipping_cost(order, items, profiles)
+
+        # Should have matched_items but no breakdown since profile is None
+        assert len(result['matched_items']) == 1
+        assert result['matched_items'][0]['profile'] is None
+        assert result['matched_items'][0]['profile_id'] is None
+        assert result['total_cost'] == 0.0
+        assert len(result['breakdown']) == 0  # No breakdown when profile is None
