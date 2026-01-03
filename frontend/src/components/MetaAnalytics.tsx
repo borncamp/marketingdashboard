@@ -382,6 +382,9 @@ export default function MetaAnalytics() {
                 CTR
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                CPC
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Conversions
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -429,6 +432,9 @@ export default function MetaAnalytics() {
                     {campaign.ctr.toFixed(2)}%
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900">
+                    {campaign.clicks > 0 ? formatCurrency(campaign.spend / campaign.clicks) : '$0.00'}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-900">
                     {formatNumber(campaign.conversions)}
                   </td>
                   <td className="px-6 py-4 text-sm">
@@ -450,7 +456,7 @@ export default function MetaAnalytics() {
 
                   return (
                     <tr>
-                      <td colSpan={9} className="px-0 py-0">
+                      <td colSpan={10} className="px-0 py-0">
                         <div className="bg-gray-50 px-8 py-4">
                           <h4 className="text-sm font-semibold text-gray-700 mb-3">Ad Sets</h4>
                           <table className="min-w-full">
@@ -463,6 +469,7 @@ export default function MetaAnalytics() {
                                 <th className="px-4 py-2 text-left">Impressions</th>
                                 <th className="px-4 py-2 text-left">Clicks</th>
                                 <th className="px-4 py-2 text-left">CTR</th>
+                                <th className="px-4 py-2 text-left">CPC</th>
                                 <th className="px-4 py-2 text-left">Conv.</th>
                                 <th className="px-4 py-2 text-left">ROAS</th>
                               </tr>
@@ -487,6 +494,9 @@ export default function MetaAnalytics() {
                                 <td className="px-4 py-3 text-sm text-gray-900">{formatNumber(adset.impressions)}</td>
                                 <td className="px-4 py-3 text-sm text-gray-900">{formatNumber(adset.clicks)}</td>
                                 <td className="px-4 py-3 text-sm text-gray-900">{adset.ctr.toFixed(2)}%</td>
+                                <td className="px-4 py-3 text-sm text-gray-900">
+                                  {adset.clicks > 0 ? formatCurrency(adset.spend / adset.clicks) : '$0.00'}
+                                </td>
                                 <td className="px-4 py-3 text-sm text-gray-900">{formatNumber(adset.conversions)}</td>
                                 <td className="px-4 py-3 text-sm">
                                   <span className={`font-semibold ${
