@@ -17,7 +17,7 @@ from app.background_tasks import shopify_sync_task, meta_sync_task, shipping_cal
 async def lifespan(app: FastAPI):
     """Manage application lifespan events."""
     # Startup: Start background tasks
-    shopify_sync_task.interval_hours = settings.shopify_sync_interval_hours
+    shopify_sync_task.interval_minutes = settings.shopify_sync_interval_minutes
     shopify_sync_task.start()
     meta_sync_task.start()
     shipping_calculation_task.start()

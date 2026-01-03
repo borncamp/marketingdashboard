@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     sync_api_key: Optional[str] = None
 
     # Background Tasks
-    shopify_sync_interval_hours: int = 1  # How often to sync Shopify data (default: 1 hour)
+    shopify_sync_interval_minutes: int = 10  # How often to sync Shopify data (default: 10 minutes)
 
     @property
     def cors_origins_list(self) -> list[str]:

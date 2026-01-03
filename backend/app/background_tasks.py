@@ -14,14 +14,14 @@ logger = logging.getLogger(__name__)
 class ShopifySyncTask:
     """Background task to automatically sync Shopify data."""
 
-    def __init__(self, interval_hours: int = 1):
+    def __init__(self, interval_minutes: int = 10):
         """
         Initialize Shopify sync task.
 
         Args:
-            interval_hours: How often to sync in hours (default: 1 hour)
+            interval_minutes: How often to sync in minutes (default: 10 minutes)
         """
-        self.interval_hours = interval_hours
+        self.interval_minutes = interval_minutes
         self.is_running = False
         self.task = None
 
@@ -34,9 +34,11 @@ class ShopifySyncTask:
 
             if not shop_name or not access_token:
                 logger.info("Shopify credentials not configured. Skipping sync.")
+                print("⚠️  Shopify sync: No credentials configured")
                 return
 
             logger.info(f"Starting Shopify sync for shop: {shop_name}")
+            print(f"🔄 Starting Shopify sync for shop: {shop_name}")
 
             # Fetch orders from Shopify for the last 30 days
             start_date = datetime.now() - timedelta(days=30)
@@ -77,6 +79,7 @@ class ShopifySyncTask:
             result = ShopifyDatabase.bulk_upsert_from_orders(daily_metrics)
 
             logger.info(f"✓ Shopify sync completed: {len(orders)} orders processed, {result['records_processed']} records updated")
+            print(f"✅ Shopify sync completed: {len(orders)} orders processed, {result['records_processed']} records updated")
 
         except httpx.TimeoutException:
             logger.error("Shopify API request timed out")
@@ -123,7 +126,8 @@ class ShopifySyncTask:
     async def run(self):
         """Run the sync task periodically."""
         self.is_running = True
-        logger.info(f"Shopify sync task started (interval: {self.interval_hours}h)")
+        logger.info(f"Shopify sync task started (interval: {self.interval_minutes} minutes)")
+        print(f"🚀 Shopify sync task started (interval: {self.interval_minutes} minutes)")
 
         while self.is_running:
             try:
@@ -132,13 +136,14 @@ class ShopifySyncTask:
                 logger.error(f"Error in Shopify sync task: {e}")
 
             # Wait for the next interval
-            await asyncio.sleep(self.interval_hours * 3600)
+            await asyncio.sleep(self.interval_minutes * 60)
 
     def start(self):
         """Start the background task."""
         if self.task is None or self.task.done():
             self.task = asyncio.create_task(self.run())
             logger.info("Shopify sync background task scheduled")
+            print("📅 Shopify sync background task scheduled")
 
     async def stop(self):
         """Stop the background task."""
@@ -424,6 +429,6 @@ class ShippingCalculationTask:
 
 
 # Global instances
-shopify_sync_task = ShopifySyncTask(interval_hours=1)
+shopify_sync_task = ShopifySyncTask(interval_minutes=10)
 meta_sync_task = MetaSyncTask(interval_minutes=10)
 shipping_calculation_task = ShippingCalculationTask(interval_minutes=10)
