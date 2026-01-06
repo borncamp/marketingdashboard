@@ -10,6 +10,7 @@ from app.routers.shopify_proxy import router as shopify_proxy_router
 from app.routers.shipping import router as shipping_router
 from app.routers.products import router as products_router
 from app.routers.meta import router as meta_router
+from app.routers.meta_bulk_generator import router as meta_bulk_generator_router
 from app.background_tasks import shopify_sync_task, meta_sync_task, shipping_calculation_task
 
 
@@ -54,6 +55,7 @@ app.include_router(campaigns_router)
 app.include_router(settings_router)
 app.include_router(products_router)
 app.include_router(meta_router)
+app.include_router(meta_bulk_generator_router)
 app.include_router(shipping_router)
 
 

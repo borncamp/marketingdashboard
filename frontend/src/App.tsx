@@ -6,6 +6,7 @@ import Settings from './components/Settings';
 import ShopifyAnalytics from './components/ShopifyAnalytics';
 import Products from './components/Products';
 import MetaAnalytics from './components/MetaAnalytics';
+import MetaBulkGenerator from './components/MetaBulkGenerator';
 import Login from './components/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -72,6 +73,17 @@ function AppContent() {
         title="Meta Ads"
       >
         📘 Meta Ads
+      </button>
+      <button
+        onClick={() => navigateToPage('meta-bulk-generator')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+          currentPage === 'meta-bulk-generator'
+            ? 'bg-indigo-100 text-indigo-800'
+            : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+        }`}
+        title="Meta Bulk Generator"
+      >
+        📤 Meta CSV
       </button>
       <button
         onClick={() => navigateToPage('shopify')}
@@ -216,6 +228,30 @@ function AppContent() {
         </header>
         <main>
           <MetaAnalytics />
+        </main>
+      </div>
+    );
+  }
+
+  // Show Meta Bulk Generator page if requested
+  if (currentPage === 'meta-bulk-generator') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Meta Ads Bulk Generator</h1>
+                <p className="mt-1 text-sm text-gray-500">
+                  Generate CSV files for bulk importing ads into Meta Ads Manager
+                </p>
+              </div>
+              <NavigationButtons />
+            </div>
+          </div>
+        </header>
+        <main>
+          <MetaBulkGenerator />
         </main>
       </div>
     );
