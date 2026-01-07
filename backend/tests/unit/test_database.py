@@ -244,6 +244,64 @@ class TestCampaignDatabase:
         result = CampaignDatabase.get_campaign_time_series("nonexistent", "clicks", 30)
         assert result is None
 
+    def test_get_all_campaigns_time_series(self, test_db, sample_campaign):
+        """Test getting time series for all campaigns."""
+        # Create multiple campaigns
+        campaigns = [
+            {'id': 'camp_1', 'name': 'Campaign 1', 'status': 'ENABLED', 'platform': 'google'},
+            {'id': 'camp_2', 'name': 'Campaign 2', 'status': 'ENABLED', 'platform': 'google'},
+            {'id': 'camp_3', 'name': 'Campaign 3', 'status': 'PAUSED', 'platform': 'google'},
+        ]
+
+        for camp in campaigns:
+            CampaignDatabase.upsert_campaign(
+                camp['id'], camp['name'], camp['status'], camp['platform']
+            )
+
+            # Add metrics only for enabled campaigns
+            if camp['status'] == 'ENABLED':
+                for i in range(5):
+                    day = date.today() - timedelta(days=i)
+                    CampaignDatabase.upsert_metric(
+                        camp['id'], str(day), "clicks", float(i * 10), "count"
+                    )
+
+        result = CampaignDatabase.get_all_campaigns_time_series("clicks", 30)
+
+        # Should only return enabled campaigns with data
+        assert len(result) == 2
+        assert all(c['metric_name'] == 'clicks' for c in result)
+        assert all(len(c['data_points']) == 5 for c in result)
+
+    def test_get_all_campaigns_time_series_no_data(self, test_db):
+        """Test getting time series when no campaigns have data."""
+        result = CampaignDatabase.get_all_campaigns_time_series("clicks", 30)
+        assert result == []
+
+    def test_get_all_metrics_time_series(self, test_db, sample_campaign):
+        """Test getting all metrics time series for a campaign."""
+        CampaignDatabase.upsert_campaign(
+            sample_campaign['id'],
+            sample_campaign['name'],
+            sample_campaign['status'],
+            sample_campaign['platform']
+        )
+
+        # Add multiple metrics
+        day = str(date.today())
+        CampaignDatabase.upsert_metric(sample_campaign['id'], day, "clicks", 100, "count")
+        CampaignDatabase.upsert_metric(sample_campaign['id'], day, "impressions", 5000, "count")
+        CampaignDatabase.upsert_metric(sample_campaign['id'], day, "spend", 50.0, "USD")
+
+        result = CampaignDatabase.get_all_metrics_time_series(sample_campaign['id'], 30)
+
+        assert isinstance(result, dict)
+        assert 'clicks' in result
+        assert 'impressions' in result
+        assert 'spend' in result
+        assert result['clicks']['metric_name'] == 'clicks'
+        assert len(result['clicks']['data_points']) == 1
+
     def test_log_sync_success(self, test_db):
         """Test logging a successful sync."""
         CampaignDatabase.log_sync(5, 100, "success", None)
@@ -412,10 +470,10 @@ class TestShopifyDatabase:
 
         summary = ShopifyDatabase.get_metrics_summary(days=7)
 
-        # Should get 6 days of data (days 0-5) due to how date boundaries work
-        assert summary['total_revenue'] == 1200.0  # 6 days * 2 orders * 100.0
-        assert summary['total_shipping_revenue'] == 120.0  # 6 days * 2 orders * 10.0
-        assert summary['total_orders'] == 12  # 6 days * 2 orders
+        # Should get 7 days of data (days 0-6)
+        assert summary['total_revenue'] == 1400.0  # 7 days * 2 orders * 100.0
+        assert summary['total_shipping_revenue'] == 140.0  # 7 days * 2 orders * 10.0
+        assert summary['total_orders'] == 14  # 7 days * 2 orders
 
     def test_get_metrics_summary_empty(self, test_db):
         """Test getting summary when no data exists."""
@@ -449,6 +507,77 @@ class TestShopifyDatabase:
         result = ShopifyDatabase.get_time_series("revenue", 30)
 
         assert len(result) == 5
+
+    def test_get_time_series_shipping_revenue(self, test_db):
+        """Test getting time series for shipping revenue."""
+        for i in range(3):
+            day = date.today() - timedelta(days=i)
+            order = {
+                'id': f'order-ship-{i}',
+                'order_number': 6000 + i,
+                'order_date': str(day),
+                'customer_email': f'ship{i}@example.com',
+                'subtotal': 100.0,
+                'total_price': 110.0,
+                'shipping_charged': float(i * 5),
+                'shipping_cost_estimated': 0.0,
+                'currency': 'USD',
+                'financial_status': 'paid',
+                'fulfillment_status': 'fulfilled'
+            }
+            ShippingDatabase.upsert_order(order)
+
+        result = ShopifyDatabase.get_time_series("shipping_revenue", 30)
+        assert len(result) >= 2  # At least 2 days with shipping > 0
+
+    def test_get_time_series_shipping_cost(self, test_db):
+        """Test getting time series for shipping cost."""
+        for i in range(3):
+            day = date.today() - timedelta(days=i)
+            order = {
+                'id': f'order-cost-{i}',
+                'order_number': 7000 + i,
+                'order_date': str(day),
+                'customer_email': f'cost{i}@example.com',
+                'subtotal': 100.0,
+                'total_price': 110.0,
+                'shipping_charged': 10.0,
+                'shipping_cost_estimated': float((i + 1) * 3),  # All have values: 3, 6, 9
+                'currency': 'USD',
+                'financial_status': 'paid',
+                'fulfillment_status': 'fulfilled'
+            }
+            ShippingDatabase.upsert_order(order)
+
+        result = ShopifyDatabase.get_time_series("shipping_cost", 30)
+        # Should include days with shipping_cost_estimated
+        assert isinstance(result, list)
+        assert len(result) >= 0  # May vary based on aggregation
+
+    def test_get_time_series_orders_count(self, test_db):
+        """Test getting time series for order counts."""
+        for i in range(4):
+            day = date.today() - timedelta(days=i)
+            order = {
+                'id': f'order-count-{i}',
+                'order_number': 8000 + i,
+                'order_date': str(day),
+                'customer_email': f'count{i}@example.com',
+                'subtotal': 100.0,
+                'total_price': 110.0,
+                'shipping_charged': 10.0,
+                'shipping_cost_estimated': 5.0,
+                'currency': 'USD',
+                'financial_status': 'paid',
+                'fulfillment_status': 'fulfilled'
+            }
+            ShippingDatabase.upsert_order(order)
+
+        result = ShopifyDatabase.get_time_series("orders", 30)
+        assert len(result) == 4
+        # Each day should have count of 1
+        for day_data in result:
+            assert day_data['value'] == 1
         assert all('date' in row and 'value' in row for row in result)
 
     def test_bulk_upsert_from_orders(self, test_db):

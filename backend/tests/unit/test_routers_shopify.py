@@ -133,9 +133,9 @@ class TestShopifyRouter:
         assert 'total_shipping_revenue' in data
         assert 'total_shipping_cost' in data
         assert 'total_orders' in data
-        assert data['total_revenue'] == 1200.0  # 100 * 2 orders * 6 days (date boundary)
-        assert data['total_shipping_revenue'] == 120.0  # 10 * 2 orders * 6 days
-        assert data['total_orders'] == 12  # 2 orders * 6 days
+        assert data['total_revenue'] == 1400.0  # 100 * 2 orders * 7 days
+        assert data['total_shipping_revenue'] == 140.0  # 10 * 2 orders * 7 days
+        assert data['total_orders'] == 14  # 2 orders * 7 days
 
     def test_get_shopify_metrics_custom_days(self, client):
         """Test getting metrics with custom day range."""
@@ -161,8 +161,8 @@ class TestShopifyRouter:
 
         assert response.status_code == 200
         data = response.json()
-        assert data['total_revenue'] == 650.0  # 50 * 13 (date boundary gives 13 days)
-        assert data['total_orders'] == 13
+        assert data['total_revenue'] == 700.0  # 50 * 14 days
+        assert data['total_orders'] == 14
 
     def test_get_shopify_time_series(self, client):
         """Test getting time series data."""

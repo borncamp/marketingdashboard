@@ -119,7 +119,7 @@ class TestCampaignsRouter:
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data['data_points']) == 9  # Gets 9 days due to date boundary logic
+        assert len(data['data_points']) == 10  # Gets 10 days of data (0-9)
 
     def test_get_all_campaigns_metrics(self, client, auth_headers):
         """Test getting time series for all campaigns."""
