@@ -360,7 +360,7 @@ class CampaignDatabase:
                     unit
                 FROM campaign_metrics
                 WHERE campaign_id = ?
-                    AND date >= date('now', '-7 days')
+                    AND date >= date('now', 'localtime', '-7 days')
                 GROUP BY metric_name, unit
                 ORDER BY metric_name
             """, (campaign_id,))
@@ -390,7 +390,7 @@ class CampaignDatabase:
                     unit
                 FROM campaign_metrics
                 WHERE campaign_id = ? AND metric_name = ?
-                    AND date >= date('now', ?)
+                    AND date >= date('now', 'localtime', ?)
                 ORDER BY date ASC
             """, (campaign_id, metric_name, f'-{days - 1} days'))
 
@@ -427,7 +427,7 @@ class CampaignDatabase:
                         unit
                     FROM campaign_metrics
                     WHERE campaign_id = ? AND metric_name = ?
-                        AND date >= date('now', ?)
+                        AND date >= date('now', 'localtime', ?)
                     ORDER BY date ASC
                 """, (campaign_id, metric_name, f'-{days} days'))
 
@@ -628,7 +628,7 @@ class ShopifyDatabase:
                     SUM(shipping_cost_estimated) as total_shipping_cost_estimated,
                     COUNT(*) as total_orders
                 FROM shopify_orders
-                WHERE order_date >= date('now', ?)
+                WHERE order_date >= date('now', 'localtime', ?)
             """, (f'-{days - 1} days',))
 
             row = cursor.fetchone()
@@ -661,7 +661,7 @@ class ShopifyDatabase:
                 query = """
                     SELECT order_date as date, SUM(subtotal) as value
                     FROM shopify_orders
-                    WHERE order_date >= date('now', ?)
+                    WHERE order_date >= date('now', 'localtime', ?)
                     GROUP BY order_date
                     ORDER BY date ASC
                 """
@@ -669,7 +669,7 @@ class ShopifyDatabase:
                 query = """
                     SELECT order_date as date, SUM(shipping_charged) as value
                     FROM shopify_orders
-                    WHERE order_date >= date('now', ?)
+                    WHERE order_date >= date('now', 'localtime', ?)
                     GROUP BY order_date
                     ORDER BY date ASC
                 """
@@ -677,7 +677,7 @@ class ShopifyDatabase:
                 query = """
                     SELECT order_date as date, SUM(shipping_cost_estimated) as value
                     FROM shopify_orders
-                    WHERE order_date >= date('now', ?) AND shipping_cost_estimated IS NOT NULL
+                    WHERE order_date >= date('now', 'localtime', ?) AND shipping_cost_estimated IS NOT NULL
                     GROUP BY order_date
                     ORDER BY date ASC
                 """
@@ -685,7 +685,7 @@ class ShopifyDatabase:
                 query = """
                     SELECT order_date as date, COUNT(*) as value
                     FROM shopify_orders
-                    WHERE order_date >= date('now', ?)
+                    WHERE order_date >= date('now', 'localtime', ?)
                     GROUP BY order_date
                     ORDER BY date ASC
                 """
@@ -693,7 +693,7 @@ class ShopifyDatabase:
                 query = """
                     SELECT order_date as date, SUM(subtotal) as value
                     FROM shopify_orders
-                    WHERE order_date >= date('now', ?)
+                    WHERE order_date >= date('now', 'localtime', ?)
                     GROUP BY order_date
                     ORDER BY date ASC
                 """
@@ -820,7 +820,7 @@ class ShippingDatabase:
                     subtotal, total_price, shipping_charged, shipping_cost_estimated,
                     currency, financial_status, fulfillment_status
                 FROM shopify_orders
-                WHERE order_date >= date('now', '-' || ? || ' days')
+                WHERE order_date >= date('now', 'localtime', '-' || ? || ' days')
             """
             params = [days]
 
@@ -1038,7 +1038,7 @@ class ShippingDatabase:
                     c.calculated_cost, c.calculation_details, c.applied_at
                 FROM order_shipping_calculations c
                 LEFT JOIN shipping_profiles p ON c.profile_id = p.id
-                WHERE c.applied_at >= date('now', '-' || ? || ' days')
+                WHERE c.applied_at >= date('now', 'localtime', '-' || ? || ' days')
             """
             params = [days]
 
@@ -1251,7 +1251,7 @@ class ProductDatabase:
                 FROM product_metrics
                 WHERE product_id = ?
                     AND campaign_id = ?
-                    AND date >= date('now', ? || ' days')
+                    AND date >= date('now', 'localtime', ? || ' days')
                 GROUP BY metric_name, unit
                 ORDER BY metric_name
             """, (product_id, campaign_id, -days))
@@ -1272,7 +1272,7 @@ class ProductDatabase:
                 WHERE product_id = ?
                     AND campaign_id = ?
                     AND metric_name = ?
-                    AND date >= date('now', ? || ' days')
+                    AND date >= date('now', 'localtime', ? || ' days')
                 ORDER BY date ASC
             """, (product_id, campaign_id, metric_name, -days))
 

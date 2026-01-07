@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 
 interface MetaCampaign {
   id: string;
@@ -40,6 +40,9 @@ const getAuthHeaders = (): HeadersInit => {
   return headers;
 };
 
+type SortField = 'name' | 'status' | 'spend' | 'impressions' | 'clicks' | 'ctr' | 'cpc' | 'conversions' | 'roas';
+type SortDirection = 'asc' | 'desc';
+
 export default function MetaAnalytics() {
   const [campaigns, setCampaigns] = useState<MetaCampaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +53,10 @@ export default function MetaAnalytics() {
   const [hideInactive, setHideInactive] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<any>(null);
+  const [sortField, setSortField] = useState<SortField>('spend');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [adSetSortField, setAdSetSortField] = useState<SortField>('spend');
+  const [adSetSortDirection, setAdSetSortDirection] = useState<SortDirection>('desc');
 
   useEffect(() => {
     checkSyncStatus();
@@ -155,10 +162,124 @@ export default function MetaAnalytics() {
   const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
   const formatNumber = (value: number) => value.toLocaleString();
 
+  // Render sort indicator for campaigns
+  const renderSortIndicator = (field: SortField) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? ' ↑' : ' ↓';
+  };
+
+  // Render sort indicator for ad sets
+  const renderAdSetSortIndicator = (field: SortField) => {
+    if (adSetSortField !== field) return null;
+    return adSetSortDirection === 'asc' ? ' ↑' : ' ↓';
+  };
+
+  // Handle column sorting for campaigns
+  const handleSort = (field: SortField) => {
+    // Close any expanded campaigns when sorting to prevent layout issues
+    setExpandedCampaign(null);
+
+    if (sortField === field) {
+      // Toggle direction if clicking the same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Default to descending for new field
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
+  // Handle column sorting for ad sets
+  const handleAdSetSort = (field: SortField) => {
+    if (adSetSortField === field) {
+      // Toggle direction if clicking the same field
+      setAdSetSortDirection(adSetSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Default to descending for new field
+      setAdSetSortField(field);
+      setAdSetSortDirection('desc');
+    }
+  };
+
+  // Sort campaigns
+  const sortCampaigns = (campaigns: MetaCampaign[]) => {
+    return [...campaigns].sort((a, b) => {
+      let aVal: number | string;
+      let bVal: number | string;
+
+      switch (sortField) {
+        case 'name':
+          aVal = a.name.toLowerCase();
+          bVal = b.name.toLowerCase();
+          break;
+        case 'status':
+          aVal = a.status;
+          bVal = b.status;
+          break;
+        case 'cpc':
+          aVal = a.clicks > 0 ? a.spend / a.clicks : 0;
+          bVal = b.clicks > 0 ? b.spend / b.clicks : 0;
+          break;
+        default:
+          aVal = a[sortField];
+          bVal = b[sortField];
+      }
+
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortDirection === 'asc'
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      }
+
+      return sortDirection === 'asc'
+        ? (aVal as number) - (bVal as number)
+        : (bVal as number) - (aVal as number);
+    });
+  };
+
+  // Sort ad sets
+  const sortAdSets = (adsets: MetaAdSet[]) => {
+    return [...adsets].sort((a, b) => {
+      let aVal: number | string;
+      let bVal: number | string;
+
+      switch (adSetSortField) {
+        case 'name':
+          aVal = a.name.toLowerCase();
+          bVal = b.name.toLowerCase();
+          break;
+        case 'status':
+          aVal = a.status;
+          bVal = b.status;
+          break;
+        case 'cpc':
+          aVal = a.clicks > 0 ? a.spend / a.clicks : 0;
+          bVal = b.clicks > 0 ? b.spend / b.clicks : 0;
+          break;
+        default:
+          aVal = a[adSetSortField];
+          bVal = b[adSetSortField];
+      }
+
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return adSetSortDirection === 'asc'
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      }
+
+      return adSetSortDirection === 'asc'
+        ? (aVal as number) - (bVal as number)
+        : (bVal as number) - (aVal as number);
+    });
+  };
+
   // Filter campaigns based on hideInactive toggle
   const filteredCampaigns = hideInactive
     ? campaigns.filter(c => c.status === 'ACTIVE')
     : campaigns;
+
+  // Apply sorting to filtered campaigns
+  const sortedCampaigns = sortCampaigns(filteredCampaigns);
 
   // Calculate totals from filtered campaigns
   const totals = filteredCampaigns.reduce((acc, campaign) => {
@@ -358,44 +479,89 @@ export default function MetaAnalytics() {
       </div>
 
       {/* Campaigns Table */}
-      <div className="bg-white shadow-md rounded-lg overflow-hidden">
+      <div className="bg-white shadow-md rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-2 py-3 w-12"></th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Campaign
+              <th className="px-2 py-3 w-12" style={{ width: '48px' }}></th>
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none"
+                onClick={() => handleSort('name')}
+              >
+                <div className="flex items-center whitespace-nowrap">
+                  Campaign{renderSortIndicator('name')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none"
+                onClick={() => handleSort('status')}
+              >
+                <div className="flex items-center whitespace-nowrap">
+                  Status{renderSortIndicator('status')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Spend
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none"
+                onClick={() => handleSort('spend')}
+              >
+                <div className="flex items-center whitespace-nowrap">
+                  Spend{renderSortIndicator('spend')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Impressions
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none"
+                onClick={() => handleSort('impressions')}
+              >
+                <div className="flex items-center whitespace-nowrap">
+                  Impressions{renderSortIndicator('impressions')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Clicks
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none"
+                onClick={() => handleSort('clicks')}
+              >
+                <div className="flex items-center whitespace-nowrap">
+                  Clicks{renderSortIndicator('clicks')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                CTR
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none"
+                onClick={() => handleSort('ctr')}
+              >
+                <div className="flex items-center whitespace-nowrap">
+                  CTR{renderSortIndicator('ctr')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                CPC
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none"
+                onClick={() => handleSort('cpc')}
+              >
+                <div className="flex items-center whitespace-nowrap">
+                  CPC{renderSortIndicator('cpc')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Conversions
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none"
+                onClick={() => handleSort('conversions')}
+              >
+                <div className="flex items-center whitespace-nowrap">
+                  Conversions{renderSortIndicator('conversions')}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                ROAS
+              <th
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 select-none"
+                onClick={() => handleSort('roas')}
+              >
+                <div className="flex items-center whitespace-nowrap">
+                  ROAS{renderSortIndicator('roas')}
+                </div>
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredCampaigns.map((campaign) => (
-              <>
-                <tr key={campaign.id} className="hover:bg-gray-50">
+            {sortedCampaigns.map((campaign) => (
+              <Fragment key={campaign.id}>
+                <tr className="hover:bg-gray-50">
                   <td className="px-2 py-4 text-center">
                     <button
                       onClick={() => toggleCampaign(campaign.id)}
@@ -454,6 +620,8 @@ export default function MetaAnalytics() {
                     ? adSets[campaign.id].filter(a => a.status === 'ACTIVE')
                     : adSets[campaign.id];
 
+                  const sortedAdSets = sortAdSets(filteredAdSets);
+
                   return (
                     <tr>
                       <td colSpan={10} className="px-0 py-0">
@@ -462,20 +630,65 @@ export default function MetaAnalytics() {
                           <table className="min-w-full">
                             <thead>
                               <tr className="text-xs text-gray-500">
-                                <th className="px-4 py-2 text-left">Ad Set Name</th>
-                                <th className="px-4 py-2 text-left">Status</th>
+                                <th
+                                  className="px-4 py-2 text-left cursor-pointer hover:text-gray-700 select-none"
+                                  onClick={() => handleAdSetSort('name')}
+                                >
+                                  Ad Set Name{renderAdSetSortIndicator('name')}
+                                </th>
+                                <th
+                                  className="px-4 py-2 text-left cursor-pointer hover:text-gray-700 select-none"
+                                  onClick={() => handleAdSetSort('status')}
+                                >
+                                  Status{renderAdSetSortIndicator('status')}
+                                </th>
                                 <th className="px-4 py-2 text-left">Optimization</th>
-                                <th className="px-4 py-2 text-left">Spend</th>
-                                <th className="px-4 py-2 text-left">Impressions</th>
-                                <th className="px-4 py-2 text-left">Clicks</th>
-                                <th className="px-4 py-2 text-left">CTR</th>
-                                <th className="px-4 py-2 text-left">CPC</th>
-                                <th className="px-4 py-2 text-left">Conv.</th>
-                                <th className="px-4 py-2 text-left">ROAS</th>
+                                <th
+                                  className="px-4 py-2 text-left cursor-pointer hover:text-gray-700 select-none"
+                                  onClick={() => handleAdSetSort('spend')}
+                                >
+                                  Spend{renderAdSetSortIndicator('spend')}
+                                </th>
+                                <th
+                                  className="px-4 py-2 text-left cursor-pointer hover:text-gray-700 select-none"
+                                  onClick={() => handleAdSetSort('impressions')}
+                                >
+                                  Impressions{renderAdSetSortIndicator('impressions')}
+                                </th>
+                                <th
+                                  className="px-4 py-2 text-left cursor-pointer hover:text-gray-700 select-none"
+                                  onClick={() => handleAdSetSort('clicks')}
+                                >
+                                  Clicks{renderAdSetSortIndicator('clicks')}
+                                </th>
+                                <th
+                                  className="px-4 py-2 text-left cursor-pointer hover:text-gray-700 select-none"
+                                  onClick={() => handleAdSetSort('ctr')}
+                                >
+                                  CTR{renderAdSetSortIndicator('ctr')}
+                                </th>
+                                <th
+                                  className="px-4 py-2 text-left cursor-pointer hover:text-gray-700 select-none"
+                                  onClick={() => handleAdSetSort('cpc')}
+                                >
+                                  CPC{renderAdSetSortIndicator('cpc')}
+                                </th>
+                                <th
+                                  className="px-4 py-2 text-left cursor-pointer hover:text-gray-700 select-none"
+                                  onClick={() => handleAdSetSort('conversions')}
+                                >
+                                  Conv.{renderAdSetSortIndicator('conversions')}
+                                </th>
+                                <th
+                                  className="px-4 py-2 text-left cursor-pointer hover:text-gray-700 select-none"
+                                  onClick={() => handleAdSetSort('roas')}
+                                >
+                                  ROAS{renderAdSetSortIndicator('roas')}
+                                </th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
-                              {filteredAdSets.map((adset) => (
+                              {sortedAdSets.map((adset) => (
                               <tr key={adset.id} className="hover:bg-white">
                                 <td className="px-4 py-3 text-sm text-gray-900">{adset.name}</td>
                                 <td className="px-4 py-3">
@@ -516,7 +729,7 @@ export default function MetaAnalytics() {
                   </tr>
                   );
                 })()}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -524,7 +737,7 @@ export default function MetaAnalytics() {
 
       {/* Summary Footer */}
       <div className="mt-4 text-sm text-gray-600 text-center">
-        Showing {filteredCampaigns.length} campaigns • Total spend: {formatCurrency(totals.spend)} •
+        Showing {sortedCampaigns.length} campaigns • Total spend: {formatCurrency(totals.spend)} •
         Avg CTR: {avgCTR.toFixed(2)}% • Total ROAS: {totalROAS.toFixed(2)}x
       </div>
     </div>
