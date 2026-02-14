@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import List
+from typing import List, Optional
 from app.models.campaign import Campaign, TimeSeriesData, Metric, DataPoint, CampaignStatus
 from app.database import CampaignDatabase
 from app.auth import verify_credentials
@@ -92,6 +92,28 @@ async def get_all_campaigns_metrics(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to fetch all campaigns metrics: {str(e)}"
+        )
+
+
+@router.get("/monthly-spend")
+async def get_monthly_spend(months: int = 12, start_date: Optional[str] = None):
+    """
+    Get monthly aggregated ad spend across all campaigns.
+
+    Args:
+        months: Number of months to look back (default: 12)
+        start_date: Optional hard cutoff date (YYYY-MM-DD), overrides months
+
+    Returns:
+        List of monthly spend totals
+    """
+    try:
+        data = CampaignDatabase.get_monthly_spend(months, start_date=start_date)
+        return {"months": data}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch monthly spend: {str(e)}"
         )
 
 

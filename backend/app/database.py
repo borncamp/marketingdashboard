@@ -445,6 +445,35 @@ class CampaignDatabase:
             return result
 
     @staticmethod
+    def get_monthly_spend(months: int = 12, start_date: str = None) -> list:
+        """Get monthly aggregated ad spend across all campaigns."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            if start_date:
+                cursor.execute("""
+                    SELECT
+                        strftime('%Y-%m', date) as month,
+                        SUM(value) as spend
+                    FROM campaign_metrics
+                    WHERE metric_name = 'spend'
+                        AND date >= ?
+                    GROUP BY strftime('%Y-%m', date)
+                    ORDER BY month ASC
+                """, (start_date,))
+            else:
+                cursor.execute("""
+                    SELECT
+                        strftime('%Y-%m', date) as month,
+                        SUM(value) as spend
+                    FROM campaign_metrics
+                    WHERE metric_name = 'spend'
+                        AND date >= date('now', 'localtime', ?)
+                    GROUP BY strftime('%Y-%m', date)
+                    ORDER BY month ASC
+                """, (f'-{months} months',))
+            return [dict(row) for row in cursor.fetchall()]
+
+    @staticmethod
     def get_all_metrics_time_series(campaign_id: str, days: int = 30) -> dict:
         """Get time series data for all metrics of a campaign."""
         with get_db_connection() as conn:
@@ -699,6 +728,56 @@ class ShopifyDatabase:
                 """
 
             cursor.execute(query, (days_param,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    @staticmethod
+    def get_monthly_summary(months: int = 12, start_date: str = None) -> list:
+        """Get monthly aggregated revenue, shipping, order, and COGS data.
+
+        COGS is calculated per order based on the shipping profile applied:
+        - If the profile name contains 'plug' (case-insensitive): COGS = subtotal / 7
+        - Otherwise (including orders with no profile): COGS = subtotal / 3
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            # Use a subquery to get the most recent shipping calculation per order
+            base_query = """
+                SELECT
+                    strftime('%Y-%m', o.order_date) as month,
+                    SUM(o.subtotal) as revenue,
+                    SUM(o.shipping_charged) as shipping_revenue,
+                    SUM(o.shipping_cost_estimated) as shipping_cost,
+                    COUNT(*) as order_count,
+                    SUM(
+                        CASE
+                            WHEN LOWER(p.name) LIKE '%plug%' THEN o.subtotal / 7.0
+                            ELSE o.subtotal / 3.0
+                        END
+                    ) as cogs
+                FROM shopify_orders o
+                LEFT JOIN (
+                    SELECT order_id, profile_id
+                    FROM order_shipping_calculations
+                    WHERE id IN (
+                        SELECT MAX(id) FROM order_shipping_calculations GROUP BY order_id
+                    )
+                ) c ON o.id = c.order_id
+                LEFT JOIN shipping_profiles p ON c.profile_id = p.id
+            """
+            if start_date:
+                cursor.execute(
+                    base_query + """
+                    WHERE o.order_date >= ?
+                    GROUP BY strftime('%Y-%m', o.order_date)
+                    ORDER BY month ASC
+                    """, (start_date,))
+            else:
+                cursor.execute(
+                    base_query + """
+                    WHERE o.order_date >= date('now', 'localtime', ?)
+                    GROUP BY strftime('%Y-%m', o.order_date)
+                    ORDER BY month ASC
+                    """, (f'-{months} months',))
             return [dict(row) for row in cursor.fetchall()]
 
     @staticmethod

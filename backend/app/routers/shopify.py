@@ -368,6 +368,28 @@ async def get_daily_metrics(days: int = 30):
         )
 
 
+@router.get("/monthly-summary")
+async def get_monthly_summary(months: int = 12, start_date: Optional[str] = None):
+    """
+    Get monthly aggregated Shopify revenue, shipping, and order data.
+
+    Args:
+        months: Number of months to look back (default: 12)
+        start_date: Optional hard cutoff date (YYYY-MM-DD), overrides months
+
+    Returns:
+        List of monthly summaries
+    """
+    try:
+        data = ShopifyDatabase.get_monthly_summary(months, start_date=start_date)
+        return {"months": data}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch monthly summary: {str(e)}"
+        )
+
+
 # ============================================================================
 # Shipping Cost Calculation Endpoints
 # ============================================================================

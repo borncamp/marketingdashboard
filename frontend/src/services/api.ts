@@ -56,6 +56,13 @@ export const campaignApi = {
     return response.data;
   },
 
+  async getMonthlySpend(months: number = 12, startDate?: string): Promise<{ months: Array<{ month: string; spend: number }> }> {
+    const params: any = { months };
+    if (startDate) params.start_date = startDate;
+    const response = await apiClient.get('/api/campaigns/monthly-spend', { params });
+    return response.data;
+  },
+
   async changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> {
     const response = await apiClient.post('/api/settings/change-password', {
       current_password: currentPassword,
@@ -128,6 +135,13 @@ export const ordersApi = {
 
   async calculateSingleOrder(orderId: string): Promise<any> {
     const response = await apiClient.post(`/api/shopify/orders/${orderId}/calculate-shipping`);
+    return response.data;
+  },
+
+  async getMonthlySummary(months: number = 12, startDate?: string): Promise<{ months: Array<{ month: string; revenue: number; shipping_revenue: number; shipping_cost: number; order_count: number }> }> {
+    const params: any = { months };
+    if (startDate) params.start_date = startDate;
+    const response = await apiClient.get('/api/shopify/monthly-summary', { params });
     return response.data;
   },
 };

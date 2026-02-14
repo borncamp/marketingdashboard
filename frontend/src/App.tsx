@@ -7,6 +7,7 @@ import ShopifyAnalytics from './components/ShopifyAnalytics';
 import Products from './components/Products';
 import MetaAnalytics from './components/MetaAnalytics';
 import MetaBulkGenerator from './components/MetaBulkGenerator';
+import ProfitTracker from './components/ProfitTracker';
 import Login from './components/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -97,6 +98,17 @@ function AppContent() {
         🛍️ Shopify
       </button>
       <button
+        onClick={() => navigateToPage('profit')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+          currentPage === 'profit'
+            ? 'bg-emerald-100 text-emerald-800'
+            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+        }`}
+        title="Profit Tracker"
+      >
+        💰 Profit
+      </button>
+      <button
         onClick={() => navigateToPage('settings')}
         className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold hover:bg-gray-200 transition-colors"
         title="Settings"
@@ -159,6 +171,30 @@ function AppContent() {
   // Show settings page if requested
   if (currentPage === 'settings') {
     return <Settings onBack={() => navigateToPage('dashboard')} />;
+  }
+
+  // Show Profit Tracker page if requested
+  if (currentPage === 'profit') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Profit Tracker</h1>
+                <p className="mt-1 text-sm text-gray-500">
+                  Track profitability and project future revenue
+                </p>
+              </div>
+              <NavigationButtons />
+            </div>
+          </div>
+        </header>
+        <main>
+          <ProfitTracker />
+        </main>
+      </div>
+    );
   }
 
   // Show Shopify analytics page if requested
