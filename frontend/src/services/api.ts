@@ -89,6 +89,13 @@ export const shippingApi = {
     return response.data;
   },
 
+  async getProfileUsageCounts(days?: number): Promise<{ counts: Record<string, number> }> {
+    const response = await apiClient.get('/api/shipping/profiles/usage-counts', {
+      params: days !== undefined ? { days } : {}
+    });
+    return response.data;
+  },
+
   async testProfile(profile: any, testData: any): Promise<any> {
     const response = await apiClient.post('/api/shipping/profiles/test', {
       profile,

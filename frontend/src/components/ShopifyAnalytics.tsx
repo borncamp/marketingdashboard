@@ -29,6 +29,7 @@ export default function ShopifyAnalytics() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingProfile, setEditingProfile] = useState<any | null>(null);
   const [profilesLoading, setProfilesLoading] = useState(false);
+  const [usageCounts, setUsageCounts] = useState<Record<string, number>>({});
 
   // Orders State
   const [orders, setOrders] = useState<any[]>([]);
@@ -43,6 +44,10 @@ export default function ShopifyAnalytics() {
 
   useEffect(() => {
     loadProfiles();
+  }, []);
+
+  useEffect(() => {
+    loadUsageCounts();
     loadOrders();
   }, [orderDays]);
 
@@ -85,6 +90,15 @@ export default function ShopifyAnalytics() {
       console.error('Failed to load profiles:', err);
     } finally {
       setProfilesLoading(false);
+    }
+  };
+
+  const loadUsageCounts = async () => {
+    try {
+      const countsData = await shippingApi.getProfileUsageCounts(orderDays);
+      setUsageCounts(countsData.counts || {});
+    } catch (err) {
+      console.error('Failed to load usage counts:', err);
     }
   };
 
@@ -137,7 +151,8 @@ export default function ShopifyAnalytics() {
     try {
       setCalculating(orderId);
       await ordersApi.calculateSingleOrder(orderId);
-      await loadOrders(); // Reload to get updated shipping_cost_estimated
+      await loadOrders();
+      await loadUsageCounts();
     } catch (err) {
       alert('Failed to calculate shipping cost');
       console.error(err);
@@ -153,7 +168,8 @@ export default function ShopifyAnalytics() {
       const orderIds = orders.map(o => o.id);
       await ordersApi.calculateShipping(orderIds);
       await loadOrders();
-      await fetchMetrics(); // Refresh metrics to show updated shipping costs
+      await loadUsageCounts();
+      await fetchMetrics();
 
       // Show success message
       setSuccessMessage(`Successfully calculated shipping costs for ${orderIds.length} orders`);
@@ -341,6 +357,7 @@ export default function ShopifyAnalytics() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost Type</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Active</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Applied</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
@@ -359,6 +376,11 @@ export default function ShopifyAnalytics() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 text-xs rounded-full ${profile.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                         {profile.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {usageCounts[profile.id] || 0}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
@@ -627,6 +649,25 @@ export default function ShopifyAnalytics() {
             </button>
           </div>
         </div>
+
+        {/* Rules Applied Summary */}
+        {profiles.length > 0 && Object.keys(usageCounts).length > 0 && (
+          <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Rules applied (last {orderDays} days)</h4>
+            <div className="flex flex-wrap gap-3">
+              {profiles
+                .filter((p) => usageCounts[p.id])
+                .map((p) => (
+                  <div key={p.id} className="flex items-center space-x-1.5 bg-white border border-gray-200 rounded-full px-3 py-1">
+                    <span className="text-sm text-gray-700">{p.name}</span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {usageCounts[p.id]}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
 
         {/* Success Message Banner */}
         {successMessage && (

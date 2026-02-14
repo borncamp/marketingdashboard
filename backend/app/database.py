@@ -997,6 +997,28 @@ class ShippingDatabase:
             cursor.execute("DELETE FROM shipping_profiles WHERE id = ?", (profile_id,))
 
     @staticmethod
+    def get_profile_usage_counts(days: int = None) -> dict:
+        """Get the number of times each shipping profile has been applied to orders."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            if days is not None:
+                cursor.execute("""
+                    SELECT profile_id, COUNT(*) as usage_count
+                    FROM order_shipping_calculations
+                    WHERE profile_id IS NOT NULL
+                      AND applied_at >= date('now', 'localtime', '-' || ? || ' days')
+                    GROUP BY profile_id
+                """, (days,))
+            else:
+                cursor.execute("""
+                    SELECT profile_id, COUNT(*) as usage_count
+                    FROM order_shipping_calculations
+                    WHERE profile_id IS NOT NULL
+                    GROUP BY profile_id
+                """)
+            return {row[0]: row[1] for row in cursor.fetchall()}
+
+    @staticmethod
     def save_shipping_calculation(order_id: str, profile_id: str, calculated_cost: float, details: dict):
         """Save a shipping cost calculation result."""
         import json

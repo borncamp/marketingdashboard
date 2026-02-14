@@ -114,6 +114,27 @@ async def update_shipping_profile(profile_id: str, profile: ShippingProfileUpdat
         )
 
 
+@router.get("/profiles/usage-counts")
+async def get_profile_usage_counts(days: Optional[int] = None):
+    """
+    Get the number of times each shipping profile has been applied to orders.
+
+    Args:
+        days: Optional time window in days to filter by
+
+    Returns:
+        Dictionary mapping profile_id to usage count
+    """
+    try:
+        counts = ShippingDatabase.get_profile_usage_counts(days=days)
+        return {"counts": counts}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch profile usage counts: {str(e)}"
+        )
+
+
 @router.delete("/profiles/{profile_id}")
 async def delete_shipping_profile(profile_id: str):
     """
