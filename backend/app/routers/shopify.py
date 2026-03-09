@@ -390,6 +390,30 @@ async def get_monthly_summary(months: int = 12, start_date: Optional[str] = None
         )
 
 
+@router.get("/product-sales")
+async def get_product_sales(start_date: Optional[str] = None):
+    """
+    Get product-level sales aggregated by product title and variant.
+
+    Args:
+        start_date: Date cutoff in YYYY-MM-DD format (defaults to Nov 1 of prior year)
+
+    Returns:
+        List of products with total_quantity and gross_revenue
+    """
+    try:
+        if not start_date:
+            from datetime import date
+            start_date = f"{date.today().year - 1}-11-01"
+        data = ShopifyDatabase.get_product_sales(start_date)
+        return {"products": data}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch product sales: {str(e)}"
+        )
+
+
 # ============================================================================
 # Shipping Cost Calculation Endpoints
 # ============================================================================

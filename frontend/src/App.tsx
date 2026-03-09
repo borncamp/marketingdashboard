@@ -8,6 +8,7 @@ import Products from './components/Products';
 import MetaAnalytics from './components/MetaAnalytics';
 import MetaBulkGenerator from './components/MetaBulkGenerator';
 import ProfitTracker from './components/ProfitTracker';
+import SalesReport from './components/SalesReport';
 import Login from './components/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -98,6 +99,17 @@ function AppContent() {
         🛍️ Shopify
       </button>
       <button
+        onClick={() => navigateToPage('sales')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+          currentPage === 'sales'
+            ? 'bg-blue-100 text-blue-800'
+            : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+        }`}
+        title="Sales Report"
+      >
+        🛒 Sales
+      </button>
+      <button
         onClick={() => navigateToPage('profit')}
         className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
           currentPage === 'profit'
@@ -171,6 +183,30 @@ function AppContent() {
   // Show settings page if requested
   if (currentPage === 'settings') {
     return <Settings onBack={() => navigateToPage('dashboard')} />;
+  }
+
+  // Show Sales Report page if requested
+  if (currentPage === 'sales') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Sales Report</h1>
+                <p className="mt-1 text-sm text-gray-500">
+                  Product-level sales by quantity and revenue
+                </p>
+              </div>
+              <NavigationButtons />
+            </div>
+          </div>
+        </header>
+        <main>
+          <SalesReport />
+        </main>
+      </div>
+    );
   }
 
   // Show Profit Tracker page if requested

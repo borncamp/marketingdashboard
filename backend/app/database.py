@@ -781,6 +781,28 @@ class ShopifyDatabase:
             return [dict(row) for row in cursor.fetchall()]
 
     @staticmethod
+    def get_product_sales(start_date: str) -> list:
+        """Get product-level sales aggregated since start_date.
+
+        Returns rows grouped by product_title + variant_title with
+        total quantity sold and gross revenue.
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    i.product_title,
+                    SUM(i.quantity) as total_quantity,
+                    SUM(i.total) as gross_revenue
+                FROM shopify_order_items i
+                JOIN shopify_orders o ON i.order_id = o.id
+                WHERE o.order_date >= ?
+                GROUP BY i.product_title
+                ORDER BY gross_revenue DESC
+            """, (start_date,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    @staticmethod
     def bulk_upsert_from_orders(orders_data: List[dict]):
         """
         Bulk upsert Shopify order data.

@@ -144,6 +144,11 @@ export const ordersApi = {
     const response = await apiClient.get('/api/shopify/monthly-summary', { params });
     return response.data;
   },
+
+  async getProductSales(startDate: string): Promise<{ products: Array<{ product_title: string; total_quantity: number; gross_revenue: number }> }> {
+    const response = await apiClient.get('/api/shopify/product-sales', { params: { start_date: startDate } });
+    return response.data;
+  },
 };
 
 export default apiClient;
