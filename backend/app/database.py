@@ -803,6 +803,37 @@ class ShopifyDatabase:
             return [dict(row) for row in cursor.fetchall()]
 
     @staticmethod
+    def get_plug_plant_counts(start_date: str) -> list:
+        """Get individual plant counts for 2" Plug products since start_date.
+
+        Multiplies order quantity by the pack size encoded in the variant title:
+        40 Pack=40, 20 Pack=20, 10 Pack=10, 4 Pack=4, everything else=1.
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    i.product_title,
+                    SUM(
+                        i.quantity * CASE
+                            WHEN i.variant_title LIKE '40 Pack%' THEN 40
+                            WHEN i.variant_title LIKE '20 Pack%' THEN 20
+                            WHEN i.variant_title LIKE '10 Pack%' THEN 10
+                            WHEN i.variant_title LIKE '4 Pack%' THEN 4
+                            ELSE 1
+                        END
+                    ) as individual_plants,
+                    SUM(i.total) as gross_revenue
+                FROM shopify_order_items i
+                JOIN shopify_orders o ON i.order_id = o.id
+                WHERE o.order_date >= ?
+                  AND i.product_title LIKE '%2" Plug%'
+                GROUP BY i.product_title
+                ORDER BY individual_plants DESC
+            """, (start_date,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    @staticmethod
     def bulk_upsert_from_orders(orders_data: List[dict]):
         """
         Bulk upsert Shopify order data.

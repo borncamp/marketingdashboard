@@ -149,6 +149,11 @@ export const ordersApi = {
     const response = await apiClient.get('/api/shopify/product-sales', { params: { start_date: startDate } });
     return response.data;
   },
+
+  async getPlugPlantCounts(startDate: string): Promise<{ plants: Array<{ product_title: string; individual_plants: number; gross_revenue: number }> }> {
+    const response = await apiClient.get('/api/shopify/plug-plant-counts', { params: { start_date: startDate } });
+    return response.data;
+  },
 };
 
 export default apiClient;

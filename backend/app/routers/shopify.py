@@ -414,6 +414,30 @@ async def get_product_sales(start_date: Optional[str] = None):
         )
 
 
+@router.get("/plug-plant-counts")
+async def get_plug_plant_counts(start_date: Optional[str] = None):
+    """
+    Get individual plant counts for 2" Plug products, accounting for pack size variants.
+
+    Args:
+        start_date: Date cutoff in YYYY-MM-DD format (defaults to Nov 1 of prior year)
+
+    Returns:
+        List of plug species with individual_plants count and gross_revenue
+    """
+    try:
+        if not start_date:
+            from datetime import date
+            start_date = f"{date.today().year - 1}-11-01"
+        data = ShopifyDatabase.get_plug_plant_counts(start_date)
+        return {"plants": data}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch plug plant counts: {str(e)}"
+        )
+
+
 # ============================================================================
 # Shipping Cost Calculation Endpoints
 # ============================================================================
