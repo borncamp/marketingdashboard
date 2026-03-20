@@ -9,6 +9,7 @@ import MetaAnalytics from './components/MetaAnalytics';
 import MetaBulkGenerator from './components/MetaBulkGenerator';
 import ProfitTracker from './components/ProfitTracker';
 import SalesReport from './components/SalesReport';
+import PickList from './components/PickList';
 import Login from './components/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -110,6 +111,17 @@ function AppContent() {
         🛒 Sales
       </button>
       <button
+        onClick={() => navigateToPage('picklist')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+          currentPage === 'picklist'
+            ? 'bg-indigo-100 text-indigo-800'
+            : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+        }`}
+        title="Pick List"
+      >
+        📋 Pick List
+      </button>
+      <button
         onClick={() => navigateToPage('profit')}
         className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
           currentPage === 'profit'
@@ -204,6 +216,30 @@ function AppContent() {
         </header>
         <main>
           <SalesReport />
+        </main>
+      </div>
+    );
+  }
+
+  // Show Pick List page if requested
+  if (currentPage === 'picklist') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Pick List</h1>
+                <p className="mt-1 text-sm text-gray-500">
+                  Aggregate items across multiple orders
+                </p>
+              </div>
+              <NavigationButtons />
+            </div>
+          </div>
+        </header>
+        <main>
+          <PickList />
         </main>
       </div>
     );

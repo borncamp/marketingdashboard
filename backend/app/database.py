@@ -834,6 +834,44 @@ class ShopifyDatabase:
             return [dict(row) for row in cursor.fetchall()]
 
     @staticmethod
+    def get_pick_list(order_numbers: List[int]) -> dict:
+        """Aggregate line items across a list of order numbers.
+
+        Returns combined quantities per product+variant and the set of
+        order numbers that were actually found in the database.
+        """
+        if not order_numbers:
+            return {"items": [], "found": []}
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ",".join("?" * len(order_numbers))
+
+            # Aggregate items
+            cursor.execute(f"""
+                SELECT
+                    i.product_title,
+                    i.variant_title,
+                    SUM(i.quantity) as total_quantity
+                FROM shopify_order_items i
+                JOIN shopify_orders o ON i.order_id = o.id
+                WHERE o.order_number IN ({placeholders})
+                GROUP BY i.product_title, i.variant_title
+                ORDER BY i.product_title, i.variant_title
+            """, order_numbers)
+            items = [dict(row) for row in cursor.fetchall()]
+
+            # Which order numbers were found
+            cursor.execute(f"""
+                SELECT DISTINCT order_number
+                FROM shopify_orders
+                WHERE order_number IN ({placeholders})
+            """, order_numbers)
+            found = [row[0] for row in cursor.fetchall()]
+
+            return {"items": items, "found": found}
+
+    @staticmethod
     def bulk_upsert_from_orders(orders_data: List[dict]):
         """
         Bulk upsert Shopify order data.

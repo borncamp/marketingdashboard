@@ -154,6 +154,14 @@ export const ordersApi = {
     const response = await apiClient.get('/api/shopify/plug-plant-counts', { params: { start_date: startDate } });
     return response.data;
   },
+
+  async getPickList(orderNumbers: number[]): Promise<{
+    items: Array<{ product_title: string; variant_title: string | null; total_quantity: number }>;
+    found: number[];
+  }> {
+    const response = await apiClient.post('/api/shopify/pick-list', { order_numbers: orderNumbers });
+    return response.data;
+  },
 };
 
 export default apiClient;

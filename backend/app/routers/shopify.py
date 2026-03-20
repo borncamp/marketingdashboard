@@ -438,6 +438,32 @@ async def get_plug_plant_counts(start_date: Optional[str] = None):
         )
 
 
+class PickListRequest(BaseModel):
+    order_numbers: List[int] = Field(..., description="List of Shopify order numbers to aggregate")
+
+
+@router.post("/pick-list")
+async def get_pick_list(request: PickListRequest):
+    """
+    Aggregate line items across multiple order numbers into a pick list.
+
+    Args:
+        order_numbers: List of integer order numbers (e.g. [123, 124, 125])
+
+    Returns:
+        items: Aggregated product+variant quantities
+        found: Which order numbers were found in the database
+    """
+    try:
+        result = ShopifyDatabase.get_pick_list(request.order_numbers)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate pick list: {str(e)}"
+        )
+
+
 # ============================================================================
 # Shipping Cost Calculation Endpoints
 # ============================================================================
